@@ -1,6 +1,7 @@
 package com.ns.findyourintroverfriend
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -19,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -89,6 +91,48 @@ class MainActivity : ComponentActivity() {
                 val startDest = rememberStartDestination(pendingDmMatchId)
                 if (startDest != null) {
                     val navController = rememberNavController()
+
+                    // ── Double-back-press to exit ──────────────────────────────
+                    // On root screens (Home, Auth), first back press shows a toast.
+                    // A second press within 2 seconds exits the app.
+                    // On any other screen, back navigates normally.
+                    val currentEntry by navController.currentBackStackEntryAsState()
+                    val currentRoute = currentEntry?.destination?.route
+                    val rootRoutes   = setOf(VeilRoute.VEIL_HOME, VeilRoute.AUTH)
+
+                    var backPressedOnce by remember { mutableStateOf(false) }
+
+                    // Reset the flag after 2 seconds of inactivity
+                    LaunchedEffect(backPressedOnce) {
+                        if (backPressedOnce) {
+                            delay(2000L)
+                            backPressedOnce = false
+                        }
+                    }
+
+                    androidx.activity.compose.BackHandler(enabled = true) {
+                        when {
+                            // On a non-root screen → just go back normally
+                            currentRoute !in rootRoutes && navController.previousBackStackEntry != null -> {
+                                navController.popBackStack()
+                            }
+                            // On root screen — double press to exit
+                            backPressedOnce -> {
+                                // Second press within 2s → exit
+                                this@MainActivity.finish()
+                            }
+                            else -> {
+                                // First press on root → show toast, arm the flag
+                                backPressedOnce = true
+                                Toast.makeText(
+                                    this@MainActivity,
+                                    "Press back again to exit Veil",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    }
+
                     VeilNavGraph(
                         navController    = navController,
                         startDestination = startDest
@@ -104,17 +148,28 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun VeilSplashLoader() {
-    // Load lottie composition from assets/SplashScreen.lottie
-    val composition by com.airbnb.lottie.compose.rememberLottieComposition(
-        com.airbnb.lottie.compose.LottieCompositionSpec.Asset("SplashScreen.lottie")
+    // Pure-Compose animated splash — no Lottie / asset dependency.
+    // Shows a pulsing VEIL wordmark on white, renders immediately.
+
+    val infiniteTransition = rememberInfiniteTransition(label = "splash")
+
+    // Subtle breathing scale on the logo
+    val logoScale by infiniteTransition.animateFloat(
+        initialValue = 0.96f,
+        targetValue  = 1.04f,
+        animationSpec = infiniteRepeatable(
+            tween(900, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse
+        ),
+        label = "logoScale"
     )
 
-    // Pulsing fallback animation shown while Lottie loads
-    val infiniteTransition = rememberInfiniteTransition(label = "sp")
-    val pulse by infiniteTransition.animateFloat(
-        initialValue = 0.6f, targetValue = 1f, label = "spPulse",
-        animationSpec = infiniteRepeatable(tween(800, easing = FastOutSlowInEasing), RepeatMode.Reverse)
-    )
+    // Fade the tagline in after a short beat
+    var tagVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(350)
+        tagVisible = true
+    }
 
     Box(
         modifier = Modifier
@@ -126,51 +181,70 @@ private fun VeilSplashLoader() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
         ) {
-            // Fixed 240dp box — shows Lottie when ready, pulsing orb while loading
-            Box(
-                modifier = Modifier.size(240.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                if (composition != null) {
-                    com.airbnb.lottie.compose.LottieAnimation(
-                        composition = composition,
-                        isPlaying   = true,
-                        restartOnPlay = false,
-                        iterations  = com.airbnb.lottie.compose.LottieConstants.IterateForever,
-                        modifier    = Modifier.fillMaxSize()
-                    )
-                } else {
-                    // Pulsing dot while lottie loads from assets
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .scale(pulse)
-                            .background(
-                                Color(0xFF111111).copy(alpha = 0.08f),
-                                shape = androidx.compose.foundation.shape.CircleShape
-                            )
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(20.dp))
-
+            // Animated wordmark
             Text(
                 "VEIL",
                 style = MaterialTheme.typography.headlineLarge.copy(
                     color         = Color(0xFF111111),
-                    fontWeight    = FontWeight.Bold,
-                    letterSpacing = 10.sp
-                )
+                    fontWeight    = FontWeight.ExtraBold,
+                    letterSpacing = 12.sp
+                ),
+                modifier = Modifier.scale(logoScale)
             )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "where introverts connect",
-                style = MaterialTheme.typography.bodySmall.copy(
-                    color         = Color(0xFF888888),
-                    letterSpacing = 1.5.sp
+
+            Spacer(Modifier.height(10.dp))
+
+            // Tagline fades in
+            androidx.compose.animation.AnimatedVisibility(
+                visible = tagVisible,
+                enter   = androidx.compose.animation.fadeIn(
+                    animationSpec = tween(500)
+                ) + androidx.compose.animation.slideInVertically(
+                    animationSpec = tween(400),
+                    initialOffsetY = { it / 3 }
                 )
-            )
+            ) {
+                Text(
+                    "where introverts connect",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color         = Color(0xFF888888),
+                        letterSpacing = 1.5.sp
+                    )
+                )
+            }
+
+            Spacer(Modifier.height(40.dp))
+
+            // Small dot loader
+            androidx.compose.animation.AnimatedVisibility(
+                visible = tagVisible,
+                enter   = androidx.compose.animation.fadeIn(tween(600, delayMillis = 200))
+            ) {
+                Row(
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)
+                ) {
+                    repeat(3) { i ->
+                        val dotAlpha by infiniteTransition.animateFloat(
+                            initialValue = 0.2f,
+                            targetValue  = 1f,
+                            animationSpec = infiniteRepeatable(
+                                tween(600, delayMillis = i * 180, easing = FastOutSlowInEasing),
+                                RepeatMode.Reverse
+                            ),
+                            label = "dot$i"
+                        )
+                        Box(
+                            Modifier
+                                .size(6.dp)
+                                .scale(dotAlpha)
+                                .background(
+                                    Color(0xFF333333).copy(alpha = dotAlpha),
+                                    shape = androidx.compose.foundation.shape.CircleShape
+                                )
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -195,9 +269,9 @@ private fun rememberStartDestination(pendingDmMatchId: String? = null): String? 
     var startDest by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        // ── Minimum splash timer — runs in parallel with Firebase resolution ───
-        // Guarantees Lottie plays for at least 2.5 s regardless of cache speed.
-        val minTimer = async { delay(2500L) }
+        // ── Minimum splash timer ─────────────────────────────────────────────────────────
+        // 800ms is enough to show the logo — feels instant on fast networks.
+        val minTimer = async { delay(800L) }
 
         val user = auth.currentUser
         if (user == null) {

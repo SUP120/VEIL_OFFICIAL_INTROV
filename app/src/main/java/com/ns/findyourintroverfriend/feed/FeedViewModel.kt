@@ -61,7 +61,8 @@ class FeedViewModel : ViewModel() {
     val hasMore: StateFlow<Boolean> = _hasMore.asStateFlow()
     private val _isLoadingMore  = MutableStateFlow(false)
     val isLoadingMore: StateFlow<Boolean> = _isLoadingMore.asStateFlow()
-    private val PAGE_SIZE = 15L
+    // Fetch a larger batch so the ranker has enough variety to shuffle meaningfully
+    private val PAGE_SIZE = 50L
 
     // ── Rate limiting ─────────────────────────────────────────────────────────────
     // Prevent spam: max 1 like-toggle per 1.5 seconds per post.
@@ -163,7 +164,16 @@ class FeedViewModel : ViewModel() {
                     .limit(PAGE_SIZE).get().await()
                 lastDoc = snap.documents.lastOrNull()
                 _hasMore.value = snap.documents.size.toLong() == PAGE_SIZE
-                _posts.value = snap.documents.mapNotNull { toPost(it) }
+                val raw = snap.documents.mapNotNull { toPost(it) }
+                // ── Rank: engagement × recency × session noise ──────────────────────
+                _posts.value = com.ns.findyourintroverfriend.util.FeedRanker.rank(
+                    posts          = raw,
+                    getPostId      = { it.postId },
+                    getLikeCount   = { it.likedBy.size },
+                    getCommentCount = { it.commentsCount.toInt() },
+                    getCreatedAt   = { it.createdAt },
+                    isDeveloper    = { com.ns.findyourintroverfriend.util.VeilDevConfig.isDeveloper(it.authorUid) }
+                )
             } catch (e: Exception) { Log.e("FeedVM", "loadFeed: ${e.message}") }
             finally { _loading.value = false }
         }
@@ -182,7 +192,16 @@ class FeedViewModel : ViewModel() {
                     .limit(PAGE_SIZE).get().await()
                 lastDoc = snap.documents.lastOrNull() ?: cursor
                 _hasMore.value = snap.documents.size.toLong() == PAGE_SIZE
-                _posts.value = _posts.value + snap.documents.mapNotNull { toPost(it) }
+                val raw = snap.documents.mapNotNull { toPost(it) }
+                val ranked = com.ns.findyourintroverfriend.util.FeedRanker.rank(
+                    posts          = raw,
+                    getPostId      = { it.postId },
+                    getLikeCount   = { it.likedBy.size },
+                    getCommentCount = { it.commentsCount.toInt() },
+                    getCreatedAt   = { it.createdAt },
+                    isDeveloper    = { com.ns.findyourintroverfriend.util.VeilDevConfig.isDeveloper(it.authorUid) }
+                )
+                _posts.value = _posts.value + ranked
             } catch (e: Exception) { Log.e("FeedVM", "loadMore: ${e.message}") }
             finally { _isLoadingMore.value = false }
         }
@@ -199,7 +218,15 @@ class FeedViewModel : ViewModel() {
                     .limit(PAGE_SIZE).get().await()
                 lastDoc = snap.documents.lastOrNull()
                 _hasMore.value = snap.documents.size.toLong() == PAGE_SIZE
-                _posts.value = snap.documents.mapNotNull { toPost(it) }
+                val raw = snap.documents.mapNotNull { toPost(it) }
+                _posts.value = com.ns.findyourintroverfriend.util.FeedRanker.rank(
+                    posts          = raw,
+                    getPostId      = { it.postId },
+                    getLikeCount   = { it.likedBy.size },
+                    getCommentCount = { it.commentsCount.toInt() },
+                    getCreatedAt   = { it.createdAt },
+                    isDeveloper    = { com.ns.findyourintroverfriend.util.VeilDevConfig.isDeveloper(it.authorUid) }
+                )
             } catch (e: Exception) { Log.e("FeedVM", "refresh: ${e.message}") }
             finally { _isRefreshing.value = false }
         }

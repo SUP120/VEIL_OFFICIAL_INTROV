@@ -101,7 +101,46 @@ class IntrovertFeedViewModel : ViewModel() {
     private val _myConnections = MutableStateFlow<Set<String>>(emptySet())
     val myConnections: StateFlow<Set<String>> = _myConnections.asStateFlow()
 
-    init { loadPosts(); loadNotifications(); loadConnections() }
+    init { loadMyAlias(); loadPosts(); loadNotifications(); loadConnections() }
+
+    // ── Cached alias — read once, reuse everywhere ────────────────────────────
+    private var _cachedAlias: String = ""
+    private fun loadMyAlias() {
+        if (uid.isEmpty()) return
+        viewModelScope.launch {
+            _cachedAlias = try {
+                db.collection("users").document(uid).get().await()
+                    .getString("alias") ?: "Introvert"
+            } catch (_: Exception) { "Introvert" }
+        }
+    }
+
+    // ── Rate-limit likes: 1 toggle per 1.5s per post ─────────────────────────
+    private val lastLikeTime = mutableMapOf<String, Long>()
+    private val LIKE_COOLDOWN_MS = 1500L
+
+    // ── My liked post IDs — loaded once, updated locally ─────────────────────
+    private val _likedPostIds = MutableStateFlow<Set<String>>(emptySet())
+    private fun loadLikedPosts() {
+        if (uid.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                val doc = db.collection("users").document(uid).get().await()
+                @Suppress("UNCHECKED_CAST")
+                val ids = (doc.get("likedIntrovertPosts") as? List<String>) ?: emptyList()
+                _likedPostIds.value = ids.toSet()
+            } catch (_: Exception) {}
+        }
+    }
+
+    // ── Pagination ──────────────────────────────────────────────────────────────
+    // Fetch 50 so the ranker has enough variety to produce meaningfully different orderings
+    private val PAGE = 50L
+    private var lastDoc: com.google.firebase.firestore.DocumentSnapshot? = null
+    private val _hasMore        = MutableStateFlow(true)
+    val hasMore: StateFlow<Boolean> = _hasMore.asStateFlow()
+    private val _isLoadingMore  = MutableStateFlow(false)
+    val isLoadingMore: StateFlow<Boolean> = _isLoadingMore.asStateFlow()
 
     private fun loadConnections() {
         if (uid.isEmpty()) return
@@ -137,71 +176,141 @@ class IntrovertFeedViewModel : ViewModel() {
     // ─────────────────────────────────────────────────────────────────────────
     //  Posts
     // ─────────────────────────────────────────────────────────────────────────
+    // ── Posts — paginated one-shot fetch (no real-time listener on feed) ──────
+    //  Real-time listeners on high-volume collections burn reads on every write
+    //  by every user. Instead: one-shot .get() with cursor pagination.
     private fun loadPosts() {
         viewModelScope.launch {
+            _loading.value = true
+            lastDoc = null
+            _hasMore.value = true
             try {
-                db.collection("introvertPosts")
+                val snap = db.collection("introvertPosts")
                     .orderBy("createdAt", Query.Direction.DESCENDING)
-                    .limit(100)
-                    .addSnapshotListener { snap, _ ->
-                        if (snap == null) { _loading.value = false; return@addSnapshotListener }
-                        viewModelScope.launch {
-                            val list = snap.documents.mapNotNull { doc ->
-                                try {
-                                    IntrovertPost(
-                                        postId       = doc.id,
-                                        authorId     = doc.getString("authorId")    ?: "",
-                                        authorAlias  = doc.getString("authorAlias") ?: "Anonymous",
-                                        content      = doc.getString("content")     ?: "",
-                                        createdAt    = doc.getLong("createdAt")     ?: 0L,
-                                        likeCount    = (doc.getLong("likeCount")    ?: 0L).toInt(),
-                                        commentCount = (doc.getLong("commentCount") ?: 0L).toInt(),
-                                        reportCount  = (doc.getLong("reportCount")  ?: 0L).toInt(),
-                                        isLiked      = checkIfLiked(doc.id)
-                                    )
-                                } catch (_: Exception) { null }
-                            }
-                            _posts.value   = list
-                            _loading.value = false
-                        }
-                    }
-            } catch (_: Exception) { _loading.value = false }
+                    .limit(PAGE).get().await()
+                lastDoc = snap.documents.lastOrNull()
+                _hasMore.value = snap.size().toLong() == PAGE
+                val likedIds = _likedPostIds.value
+                val raw = snap.documents.mapNotNull { doc ->
+                    try {
+                        // Filter hidden posts client-side (works for docs missing the field too)
+                        if (doc.getBoolean("hidden") == true) return@mapNotNull null
+                        IntrovertPost(
+                            postId       = doc.id,
+                            authorId     = doc.getString("authorId")    ?: "",
+                            authorAlias  = doc.getString("authorAlias") ?: "Anonymous",
+                            content      = doc.getString("content")     ?: "",
+                            createdAt    = doc.getLong("createdAt")     ?: 0L,
+                            likeCount    = (doc.getLong("likeCount")    ?: 0L).toInt(),
+                            commentCount = (doc.getLong("commentCount") ?: 0L).toInt(),
+                            reportCount  = (doc.getLong("reportCount")  ?: 0L).toInt(),
+                            isLiked      = doc.id in likedIds
+                        )
+                    } catch (_: Exception) { null }
+                }
+                _posts.value = com.ns.findyourintroverfriend.util.FeedRanker.rank(
+                    posts           = raw,
+                    getPostId       = { it.postId },
+                    getLikeCount    = { it.likeCount },
+                    getCommentCount = { it.commentCount },
+                    getCreatedAt    = { it.createdAt }
+                )
+            } catch (_: Exception) {}
+            finally { _loading.value = false }
         }
     }
 
-    fun refreshPosts() { _loading.value = true; loadPosts() }
-
-    private suspend fun checkIfLiked(postId: String): Boolean {
-        if (uid.isEmpty()) return false
-        return try {
-            db.collection("introvertPosts").document(postId)
-                .collection("likes").document(uid).get().await().exists()
-        } catch (_: Exception) { false }
+    fun loadMorePosts() {
+        val cursor = lastDoc ?: return
+        if (_isLoadingMore.value || !_hasMore.value) return
+        viewModelScope.launch {
+            _isLoadingMore.value = true
+            try {
+                val snap = db.collection("introvertPosts")
+                    .orderBy("createdAt", Query.Direction.DESCENDING)
+                    .startAfter(cursor)
+                    .limit(PAGE).get().await()
+                lastDoc = snap.documents.lastOrNull() ?: cursor
+                _hasMore.value = snap.size().toLong() == PAGE
+                val likedIds = _likedPostIds.value
+                val raw = snap.documents.mapNotNull { doc ->
+                    try {
+                        if (doc.getBoolean("hidden") == true) return@mapNotNull null
+                        IntrovertPost(
+                            postId       = doc.id,
+                            authorId     = doc.getString("authorId")    ?: "",
+                            authorAlias  = doc.getString("authorAlias") ?: "Anonymous",
+                            content      = doc.getString("content")     ?: "",
+                            createdAt    = doc.getLong("createdAt")     ?: 0L,
+                            likeCount    = (doc.getLong("likeCount")    ?: 0L).toInt(),
+                            commentCount = (doc.getLong("commentCount") ?: 0L).toInt(),
+                            reportCount  = (doc.getLong("reportCount")  ?: 0L).toInt(),
+                            isLiked      = doc.id in likedIds
+                        )
+                    } catch (_: Exception) { null }
+                }
+                val ranked = com.ns.findyourintroverfriend.util.FeedRanker.rank(
+                    posts           = raw,
+                    getPostId       = { it.postId },
+                    getLikeCount    = { it.likeCount },
+                    getCommentCount = { it.commentCount },
+                    getCreatedAt    = { it.createdAt }
+                )
+                _posts.value = _posts.value + ranked
+            } catch (_: Exception) {}
+            finally { _isLoadingMore.value = false }
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Like / Report / Create post  (unchanged logic)
     // ─────────────────────────────────────────────────────────────────────────
+    fun refreshPosts() { loadPosts(); loadLikedPosts() }
+
     fun toggleLike(postId: String) {
         if (uid.isEmpty()) return
+        // Rate limit — prevent double-tap spam
+        val now = System.currentTimeMillis()
+        if (now - (lastLikeTime[postId] ?: 0L) < LIKE_COOLDOWN_MS) return
+        lastLikeTime[postId] = now
+
+        val post = _posts.value.find { it.postId == postId } ?: return
+        val liked = post.isLiked
+
+        // Optimistic local update — instant UI, no read needed
+        _posts.value = _posts.value.map { p ->
+            if (p.postId != postId) p
+            else p.copy(
+                isLiked   = !liked,
+                likeCount = if (liked) p.likeCount - 1 else p.likeCount + 1
+            )
+        }
+        _likedPostIds.value = if (liked)
+            _likedPostIds.value - postId
+        else
+            _likedPostIds.value + postId
+
         viewModelScope.launch {
             try {
                 val postRef = db.collection("introvertPosts").document(postId)
-                val likeRef = postRef.collection("likes").document(uid)
-                if (likeRef.get().await().exists()) {
-                    likeRef.delete().await()
+                if (liked) {
                     postRef.update("likeCount", FieldValue.increment(-1)).await()
                 } else {
-                    likeRef.set(mapOf("uid" to uid, "likedAt" to System.currentTimeMillis())).await()
                     postRef.update("likeCount", FieldValue.increment(1)).await()
                 }
+                // Track liked IDs in a single array on the user doc (1 write, no subcollection)
+                db.collection("users").document(uid).update(
+                    "likedIntrovertPosts",
+                    if (liked) FieldValue.arrayRemove(postId) else FieldValue.arrayUnion(postId)
+                ).await()
+            } catch (_: Exception) {
+                // Rollback on failure
                 _posts.value = _posts.value.map { p ->
-                    if (p.postId == postId) p.copy(
-                        isLiked = !p.isLiked,
-                        likeCount = if (p.isLiked) p.likeCount - 1 else p.likeCount + 1
+                    if (p.postId == postId) p.copy(isLiked = liked,
+                        likeCount = if (liked) p.likeCount + 1 else p.likeCount - 1
                     ) else p
                 }
-            } catch (_: Exception) {}
+            }
         }
     }
 
@@ -425,9 +534,15 @@ class IntrovertFeedViewModel : ViewModel() {
     // ─────────────────────────────────────────────────────────────────────────
     //  Helpers
     // ─────────────────────────────────────────────────────────────────────────
-    private suspend fun getMyAlias(): String = try {
-        db.collection("users").document(uid).get().await().getString("alias") ?: "Introvert"
-    } catch (_: Exception) { "Introvert" }
+    private suspend fun getMyAlias(): String {
+        if (_cachedAlias.isNotBlank()) return _cachedAlias
+        return try {
+            val alias = db.collection("users").document(uid).get().await()
+                .getString("alias") ?: "Introvert"
+            _cachedAlias = alias
+            alias
+        } catch (_: Exception) { "Introvert" }
+    }
 
     private fun generateAnonymousAlias(): String {
         val prefixes = listOf("Quiet Soul","Silent Thinker","Lone Wolf","Deep Mind",

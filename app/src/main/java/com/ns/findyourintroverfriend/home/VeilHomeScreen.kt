@@ -844,7 +844,7 @@ fun VeilHomeScreen(
                 // Tab 0 ÃƒÂ¢Ã¢Â‚Â¬Ã¢Â€Â Feed
 
 
-                NavigationBarItem(selected = selectedTab == 0, onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); previousTab = selectedTab; selectedTab = 0 },
+                NavigationBarItem(selected = selectedTab == 0, onClick = { previousTab = selectedTab; selectedTab = 0 },
 
 
                     icon = { Image(painterResource(R.drawable.ic_nav_home), null, Modifier.size(26.dp).alpha(if (selectedTab == 0) 1f else 0.45f)) },
@@ -856,7 +856,7 @@ fun VeilHomeScreen(
                 // Tab 1 ÃƒÂ¢Ã¢Â‚Â¬Ã¢Â€Â Swipe (heart icon)
 
 
-                NavigationBarItem(selected = selectedTab == 1, onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); previousTab = selectedTab; selectedTab = 1 },
+                NavigationBarItem(selected = selectedTab == 1, onClick = { previousTab = selectedTab; selectedTab = 1 },
 
 
                     icon = {
@@ -889,7 +889,7 @@ fun VeilHomeScreen(
                 // Tab 2 ÃƒÂ¢Ã¢Â‚Â¬Ã¢Â€Â Games
 
 
-                NavigationBarItem(selected = selectedTab == 2, onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); previousTab = selectedTab; selectedTab = 2 },
+                NavigationBarItem(selected = selectedTab == 2, onClick = { previousTab = selectedTab; selectedTab = 2 },
 
 
                     icon = { Image(painterResource(R.drawable.ic_nav_gamepad), null, Modifier.size(26.dp).alpha(if (selectedTab == 2) 1f else 0.45f)) },
@@ -901,7 +901,7 @@ fun VeilHomeScreen(
                 // Tab 3 ÃƒÂ¢Ã¢Â‚Â¬Ã¢Â€Â Profile
 
 
-                NavigationBarItem(selected = selectedTab == 3, onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); previousTab = selectedTab; selectedTab = 3 },
+                NavigationBarItem(selected = selectedTab == 3, onClick = { previousTab = selectedTab; selectedTab = 3 },
 
 
                     icon = {
