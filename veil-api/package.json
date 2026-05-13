@@ -1,0 +1,8 @@
+{
+    "name": "veil-api",
+    "version": "1.0.0",
+    "description": "Veil app backend — Cashfree payment API (hosted on Vercel, free)",
+    "dependencies": {
+        "firebase-admin": "^12.0.0"
+    }
+}

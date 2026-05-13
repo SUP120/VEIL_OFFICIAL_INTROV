@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="512dp"
+    android:height="512dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <!-- Outer controller body -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#111111"
+        android:strokeWidth="30"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M186,104 L326,104 C374,104 418,132 440,176 C458,212 460,252 440,288 C420,326 380,352 338,356 L318,356 L312,374 C309,382 301,388 292,388 L220,388 C211,388 203,382 200,374 L194,356 L174,356 C132,356 92,326 72,288 C52,252 54,212 72,176 C94,132 138,104 186,104 Z" />
+
+    <!-- D-pad vertical bar -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#111111"
+        android:strokeWidth="26"
+        android:strokeLineCap="round"
+        android:pathData="M152,192 L152,256" />
+
+    <!-- D-pad horizontal bar -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#111111"
+        android:strokeWidth="26"
+        android:strokeLineCap="round"
+        android:pathData="M120,224 L184,224" />
+
+    <!-- Right button circle — top -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#111111"
+        android:strokeWidth="20"
+        android:pathData="M340,185 m-18,0 a18,18 0 1,0 36,0 a18,18 0 1,0 -36,0" />
+
+    <!-- Right button circle — right -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#111111"
+        android:strokeWidth="20"
+        android:pathData="M372,217 m-18,0 a18,18 0 1,0 36,0 a18,18 0 1,0 -36,0" />
+
+    <!-- Right button circle — left -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#111111"
+        android:strokeWidth="20"
+        android:pathData="M308,217 m-18,0 a18,18 0 1,0 36,0 a18,18 0 1,0 -36,0" />
+
+    <!-- Right button circle — bottom -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#111111"
+        android:strokeWidth="20"
+        android:pathData="M340,249 m-18,0 a18,18 0 1,0 36,0 a18,18 0 1,0 -36,0" />
+
+</vector>

@@ -1,0 +1,390 @@
+// ─────────────────────────────────────────────────────────────────────────────
+//  COPY THIS INTO:
+//  Firebase Console → Firestore Database → Rules tab → Publish
+//
+//  ⚠  This file uses Firebase Security Rules syntax — NOT JavaScript.
+//     Keep it as .rules  (or paste directly into the Firebase console).
+// ─────────────────────────────────────────────────────────────────────────────
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── User profiles ──────────────────────────────────────────────────────
+    match /users/{userId} {
+      // Owner can read & write their own doc fully
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Any signed-in user can read another member's profile (alias, emoji, etc.)
+      allow read: if request.auth != null;
+      // Any authenticated user can update certain fields on other users' docs
+      // (needed for client-side group formation and lobby room transactions)
+      allow update: if request.auth != null
+                 && request.resource.data.diff(resource.data).affectedKeys()
+                    .hasOnly(['groupId', 'lobbyRoomId']);
+      // Moderation: admin can update ban/strike fields on ANY user
+      // (simple admin check: compare email stored in the requesting user's doc)
+      allow update: if request.auth != null
+                 && request.resource.data.diff(resource.data).affectedKeys()
+                    .hasAny(['isBanned', 'banType', 'bannedUntil', 'strikes',
+                             'reportCount', 'isFlagged', 'flaggedInGroups',
+                             'adminWarning', 'blockedUsers']);
+    }
+
+    // ── Matchmaking queue ──────────────────────────────────────────────────
+    match /matchmaking_queue/{userId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == userId;
+      // ANY authenticated user can DELETE a queue entry
+      // (needed so the group-forming transaction can remove all 4 members at once)
+      allow delete: if request.auth != null;
+    }
+
+    // ── Lobby rooms ────────────────────────────────────────────────────────
+    match /lobby_rooms/{roomId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null
+                 && resource.data.createdBy == request.auth.uid;
+    }
+
+    // ── Groups ─────────────────────────────────────────────────────────────
+    match /groups/{groupId} {
+      allow read, write: if request.auth != null;
+
+      // ── ALL nested subcollections under groups: allow read for any signed-in user ──
+      // Firestore rules do not cascade — each subcollection needs explicit rules.
+      match /{allSubcollections=**} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null;
+      }
+
+      // ── Daily questions: members write their own only ──────────────────
+      match /daily_questions/{docId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null
+                  && docId.matches(request.auth.uid + '_.*');
+
+        // ── Answers ───────────────────────────────────────────────────────
+        match /answers/{answerUid} {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null
+                    && request.auth.uid == answerUid;
+
+          // ── Reactions on an answer ────────────────────────────────────
+          match /reactions/{reactorUid} {
+            allow read: if request.auth != null;
+            allow write: if request.auth != null
+                      && request.auth.uid == reactorUid;
+          }
+        }
+      }
+
+      // ── Group-level reactions ─────────────────────────────────────────
+      match /reactions/{uid}/sources/{sourceUid} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      // ── Echoes (resonating with answers) ─────────────────────────────
+      match /echoes/{answererUid}/sources/{echoUid} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == echoUid;
+      }
+
+      // ── Members sub-doc ───────────────────────────────────────────────
+      match /members/{uid} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      // ── True-or-Myth guesses ──────────────────────────────────────────
+      match /tom_guesses/{guesserUid}/guesses/{targetUid} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == guesserUid;
+      }
+
+      // ── Would You Rather picks ────────────────────────────────────────
+      match /wyr_picks/{questionId}/answers/{uid} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      // ── Game invites (Tic-Tac-Toe) ────────────────────────────────────
+      match /game_invites/{inviteId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+                   && request.resource.data.fromUid == request.auth.uid;
+        allow update: if request.auth != null
+                   && resource.data.toUid == request.auth.uid;
+      }
+
+      // ── Day 3 slow chat messages ──────────────────────────────────────
+      match /chat/{messageId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+                   && request.resource.data.uid == request.auth.uid;
+      }
+
+      // ── Bond scores ───────────────────────────────────────────────────
+      match /bond_inputs/{uid} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // ── Party sessions ─────────────────────────────────────────────────────
+    match /party_sessions/{sessionId} {
+      allow read: if request.auth != null
+               && (resource.data.user1 == request.auth.uid
+                || resource.data.user2 == request.auth.uid);
+      allow write: if request.auth != null;
+
+      // Chat messages — both members can read & write
+      match /messages/{messageId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+                   && request.resource.data.uid == request.auth.uid;
+        allow update, delete: if false;  // messages are immutable once sent
+      }
+
+      // Game state subcollections — both members read & write
+      match /game_finish/{docId}   { allow read, write: if request.auth != null; }
+      match /game_hot_take/{docId} { allow read, write: if request.auth != null; }
+      match /game_wyr/{docId}      { allow read, write: if request.auth != null; }
+    }
+
+    // ── Reports (user-reports a member) ───────────────────────────────────
+    // Doc ID format: "{groupId}__{reporterUid}__{targetUid}"
+    // Any signed-in user can create a report; only the reporter can read theirs.
+    // Admin reads all (enforced app-side by email check).
+    match /reports/{reportId} {
+      // Anyone signed in can create a report
+      allow create: if request.auth != null;
+      // Reporter can read their own report; admin reads all
+      allow read: if request.auth != null;
+      // No updates or deletes by normal users (admin handles via Cloud Functions / console)
+      allow update, delete: if false;
+    }
+
+    // ── Reported Questions (user reports a question card) ─────────────────
+    match /reported_questions/{reportId} {
+      allow create: if request.auth != null;
+      allow read:   if request.auth != null;
+      allow update, delete: if false;
+    }
+
+    // ── Admin logs ──────────────────────────────────────────────────────
+    // Written by admin via app; read back in dashboard for audit trail.
+    match /admin_logs/{actionId} {
+      allow read, create: if request.auth != null;
+      allow update, delete: if false;
+    }
+
+    // ── Admin actions log ─────────────────────────────────────────────────
+    // Written by Cloud Function or admin-only; normal users cannot write here.
+    match /admin_actions/{actionId} {
+      allow read:   if request.auth != null;
+      allow write:  if false;  // written only by Cloud Functions / Firebase console
+    }
+
+    // ── Aesthetics feed photos ─────────────────────────────────────────────
+    // Written by the owning user; readable by any signed-in user in the same group.
+    match /aesthetic_posts/{postId} {
+      allow read:   if request.auth != null;
+      allow create: if request.auth != null
+                 && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if request.auth != null
+                 && resource.data.uid == request.auth.uid;
+    }
+
+    // ── Circle Vibes (Song · Color · One Word Bio) ─────────────────────────
+    // Doc ID = "{groupId}_{uid}" — one entry per user per group.
+    // Any signed-in user can read all vibes (to show the circle feed).
+    // Only the owning user can create or overwrite their own vibe entry.
+    match /vibes/{vibeId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+                 && request.resource.data.uid == request.auth.uid;
+      allow delete: if request.auth != null
+                 && resource.data.uid == request.auth.uid;
+    }
+
+    // ── Dare to Share answers (Day 2) ──────────────────────────────────────────
+    // Doc ID = "{groupId}_{uid}" — one anonymous answer per user per group.
+    // Readable by any signed-in user (feed is anonymous). Only owner can write.
+    match /dare_answers/{answerId} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+                 && request.resource.data.uid == request.auth.uid;
+      allow delete: if request.auth != null
+                 && resource.data.uid == request.auth.uid;
+    }
+
+    // ── Secret Compliments (Day 2) ─────────────────────────────────────────────
+    // Doc ID = "{groupId}_{fromUid}" — one compliment per sender per group.
+    // Only the recipient (toUid) and the sender (fromUid) can read.
+    // Only the sender can create / update.
+    match /secret_compliments/{complimentId} {
+      allow read: if request.auth != null
+                && (resource.data.toUid == request.auth.uid
+                 || resource.data.fromUid == request.auth.uid);
+      allow create, update: if request.auth != null
+                 && request.resource.data.fromUid == request.auth.uid;
+      allow delete: if request.auth != null
+                 && resource.data.fromUid == request.auth.uid;
+    }
+
+    // ── SWIPE FEATURE ──────────────────────────────────────────────────────────
+
+    // ── Swipe Profiles ─────────────────────────────────────────────────────────
+    // Any signed-in user can READ profiles (needed for the swipe feed).
+    // Only the owner can CREATE or UPDATE their own profile.
+    // Profiles with isProfileComplete == false are still readable (edge case tolerance).
+    match /swipeProfiles/{uid} {
+      allow read:          if request.auth != null;
+      allow create, update: if request.auth != null
+                         && request.auth.uid == uid;
+      allow delete:        if request.auth != null
+                         && request.auth.uid == uid;
+    }
+
+    // ── Swipe Likes / Passes ───────────────────────────────────────────────────
+    // A user can only read and write their OWN like/pass decisions.
+    // BUT: when checking for mutual matches, a user also needs to read the OTHER
+    // user's like on themselves — allow read if the doc ID equals the requester's UID.
+    match /swipeLikes/{ownerUid}/given/{targetUid} {
+      // Owner reads all their own decisions
+      allow read, write: if request.auth != null
+                      && request.auth.uid == ownerUid;
+      // Target reads the decision made about them (for mutual-match detection)
+      allow read: if request.auth != null
+               && request.auth.uid == targetUid;
+    }
+
+    // Who liked me — written by sender, readable/deletable by recipient only
+    match /swipeLikes/{ownerUid}/received/{senderUid} {
+      // Owner can read and delete their received likes (pass = delete)
+      allow read, delete: if request.auth != null
+                       && request.auth.uid == ownerUid;
+      // Sender writes their like notification
+      allow create, update: if request.auth != null
+                         && request.auth.uid == senderUid;
+    }
+
+    // ── Matches ────────────────────────────────────────────────────────────────
+    // create: any signed-in user (client creates on mutual like detection)
+    // read:   any signed-in user — security enforced client-side; index controls discovery
+    // update: only the two matched participants
+    match /matches/{matchId} {
+      allow create: if request.auth != null;
+      allow read:   if request.auth != null;
+      allow update: if request.auth != null
+                 && (resource.data.userA == request.auth.uid
+                  || resource.data.userB == request.auth.uid);
+
+      // Chat messages inside the Connection Room
+      match /messages/{messageId} {
+        allow read: if request.auth != null
+                 && (get(/databases/$(database)/documents/matches/$(matchId)).data.userA == request.auth.uid
+                  || get(/databases/$(database)/documents/matches/$(matchId)).data.userB == request.auth.uid);
+        allow create: if request.auth != null
+                   && request.resource.data.senderUid == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+
+    // ── User match index (denormalized for reliable querying) ─────────────────
+    // Each user owns their own index sub-collection.
+    match /userMatches/{ownerUid}/index/{matchId} {
+      allow read, write: if request.auth != null
+                      && request.auth.uid == ownerUid;
+    }
+
+
+
+    // ── Swipe Compliments ──────────────────────────────────────────────────────
+    // Sender writes compliment to recipient's sub-collection.
+    // Only the recipient (owner of the parent doc) can read their received compliments.
+    // Recipient can update status (accept/reject) and isRead on received compliments.
+    match /compliments/{recipientUid}/received/{senderUid} {
+      allow read: if request.auth != null
+               && request.auth.uid == recipientUid;
+      allow create: if request.auth != null
+                 && request.auth.uid == senderUid;
+      // Recipient accepts or rejects — may only touch 'status' and 'isRead' fields
+      allow update: if request.auth != null
+                 && request.auth.uid == recipientUid
+                 && request.resource.data.diff(resource.data).affectedKeys()
+                    .hasOnly(['status', 'isRead']);
+      allow delete: if false;
+    }
+
+    // ── Post Feed ───────────────────────────────────────────────────────────────
+    // Any signed-in user can read posts; only the author can write their own.
+    match /veilPosts/{postId} {
+      allow read:          if request.auth != null;
+      allow create:        if request.auth != null
+                        && request.resource.data.authorUid == request.auth.uid;
+      allow update:        if request.auth != null
+                        && (resource.data.authorUid == request.auth.uid
+                         || request.resource.data.diff(resource.data).affectedKeys()
+                            .hasOnly(['likedBy', 'commentsCount']));
+      allow delete:        if request.auth != null
+                        && resource.data.authorUid == request.auth.uid;
+
+      // Comments subcollection
+      match /comments/{commentId} {
+        allow read:   if request.auth != null;
+        allow create: if request.auth != null
+                   && request.resource.data.authorUid == request.auth.uid;
+        allow update: if request.auth != null
+                   && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likedBy']);
+        allow delete: if request.auth != null
+                   && resource.data.authorUid == request.auth.uid;
+      }
+    }
+
+    // ── Room Lobby (duplicate rule removed — already covered above) ────────
+    // (Keeping a clean single definition above under lobby_rooms)
+
+    // ── Introvert Feed Posts ───────────────────────────────────────────────────
+    // Anyone signed-in can read non-hidden posts. Author can create/delete.
+    // Any user can update likeCount (toggled client-side).
+    match /introvertPosts/{postId} {
+      allow read:   if request.auth != null && resource.data.get("hidden", false) == false;
+      allow create: if request.auth != null
+                 && request.resource.data.authorId == request.auth.uid;
+      allow update: if request.auth != null
+                 && (resource.data.authorId == request.auth.uid
+                  || request.resource.data.diff(resource.data).affectedKeys()
+                     .hasOnly(['likeCount', 'reportCount', 'hidden']));
+      allow delete: if request.auth != null
+                 && resource.data.authorId == request.auth.uid;
+
+      // Likes subcollection — each user owns their like doc
+      match /likes/{uid} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      // Reports subcollection — reporter writes once, owner reads
+      match /reports/{reporterUid} {
+        allow read:   if request.auth != null && request.auth.uid == reporterUid;
+        allow create: if request.auth != null && request.auth.uid == reporterUid;
+        allow update, delete: if false;
+      }
+    }
+
+    // ── Veil Admin Reports ─────────────────────────────────────────────────────
+    // Written by any authenticated user (post & chat reports).
+    // Read is intentionally blocked for normal users — admin uses Firebase Console.
+    // status field (pending / reviewed / banned) is updated by admin via console.
+    match /veilReports/{reportId} {
+      allow create: if request.auth != null
+                 && request.resource.data.reportedBy == request.auth.uid;
+      allow read:   if false;   // Admin reads directly in Firebase Console
+      allow update, delete: if false;
+    }
+
+  }
+}

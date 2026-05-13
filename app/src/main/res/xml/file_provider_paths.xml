@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Allows FileProvider to share files from the internal cache dir (used by UCrop) -->
+    <cache-path name="ucrop_cache" path="." />
+    <!-- Allows sharing files from external cache as well -->
+    <external-cache-path name="ucrop_external_cache" path="." />
+    <!-- For content:// URIs from gallery / camera -->
+    <external-files-path name="ucrop_external_files" path="." />
+</paths>

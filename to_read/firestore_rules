@@ -1,0 +1,204 @@
+// ═════════════════════════════════════════════════════════════════════════════
+//  INROVERT — FIREBASE SECURITY RULES
+//  ─────────────────────────────────────────────────────────────────────────────
+//  ⚠  This file uses Firebase Security Rules syntax — NOT JavaScript.
+//     Paste each section into its respective tab in Firebase Console.
+//
+//  SECTION 1 ──►  Firebase Console → Firestore Database → Rules → Publish
+//  SECTION 2 ──►  Firebase Console → Storage            → Rules → Publish
+// ═════════════════════════════════════════════════════════════════════════════
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  SECTION 1 — FIRESTORE RULES
+//  Paste everything between the markers into:
+//  Firebase Console → Firestore Database → Rules tab → Publish
+// ─────────────────────────────────────────────────────────────────────────────
+
+rules_version = '2';
+service cloud.firestore {
+  match / databases / { database } / documents {
+
+    // ── User profiles ────────────────────────────────────────────────────────
+    match / users / { userId } {
+      // Any signed-in user can read profiles (alias, emoji, photoUrl, etc.)
+      allow read: if request.auth != null;
+
+      // Owner can write their own doc fully
+      allow write: if request.auth != null && request.auth.uid == userId;
+
+      // Any authenticated user can update groupId or lobbyRoomId on any user doc
+      // (needed for client-side group formation and waiting room transactions)
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['groupId', 'lobbyRoomId']);
+    }
+
+    // ── Matchmaking queue ────────────────────────────────────────────────────
+    match / matchmaking_queue / { userId } {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null && request.auth.uid == userId;
+      // ANY authenticated user can DELETE a queue entry
+      // (group-forming transaction removes all 4 members at once)
+      allow delete: if request.auth != null;
+    }
+
+    // ── Lobby rooms ──────────────────────────────────────────────────────────
+    // Public rooms anyone can see and join.
+    // Capacity (2 male + 2 female) is enforced app-side.
+    match / lobby_rooms / { roomId } {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if request.auth != null
+        && resource.data.createdBy == request.auth.uid;
+    }
+
+    // ── Groups ───────────────────────────────────────────────────────────────
+    match / groups / { groupId } {
+      allow read, write: if request.auth != null;
+
+      // Wildcard rule: ensures any signed-in user can read ANY nested
+      // subcollection path (fixes "permission denied" on Answer Card, etc.)
+      // Firestore rules do NOT cascade — each level needs its own rule.
+      match / { allSubcollections=**} {
+        allow read: if request.auth != null;
+      }
+
+      // ── Daily questions ───────────────────────────────────────────────────
+      match / daily_questions / { docId } {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null
+          && docId.matches(request.auth.uid + '_.*');
+
+        // ── Answers ─────────────────────────────────────────────────────────
+        match / answers / { answerUid } {
+          allow read: if request.auth != null;
+          allow write: if request.auth != null
+            && request.auth.uid == answerUid;
+
+          // ── Reactions on an answer ─────────────────────────────────────
+          match / reactions / { reactorUid } {
+            allow read: if request.auth != null;
+            allow write: if request.auth != null
+              && request.auth.uid == reactorUid;
+          }
+        }
+      }
+
+      // ── Group-level reactions ─────────────────────────────────────────────
+      match / reactions / { uid } / sources / { sourceUid } {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      // ── Echoes (resonating with answers) ──────────────────────────────────
+      match / echoes / { answererUid } / sources / { echoUid } {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == echoUid;
+      }
+
+      // ── Members sub-doc ───────────────────────────────────────────────────
+      match / members / { uid } {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      // ── True-or-Myth guesses ──────────────────────────────────────────────
+      match / tom_guesses / { guesserUid } / guesses / { targetUid } {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == guesserUid;
+      }
+
+      // ── Would You Rather picks ────────────────────────────────────────────
+      match / wyr_picks / { questionId } / answers / { uid } {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      // ── Game invites (Tic-Tac-Toe) ────────────────────────────────────────
+      match / game_invites / { inviteId } {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+          && request.resource.data.fromUid == request.auth.uid;
+        allow update: if request.auth != null
+          && resource.data.toUid == request.auth.uid;
+      }
+
+      // ── Day 3 slow chat messages ──────────────────────────────────────────
+      match / chat / { messageId } {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+          && request.resource.data.uid == request.auth.uid;
+      }
+
+      // ── Bond scores ───────────────────────────────────────────────────────
+      match / bond_inputs / { uid } {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // ── Party sessions ───────────────────────────────────────────────────────
+    match / party_sessions / { sessionId } {
+      // Only the two participants can read the session
+      allow read: if request.auth != null
+        && (resource.data.user1 == request.auth.uid
+          || resource.data.user2 == request.auth.uid);
+      allow write: if request.auth != null;
+
+      // Chat messages — both participants can read & send
+      match / messages / { messageId } {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+          && request.resource.data.uid == request.auth.uid;
+        allow update, delete: if false;  // messages are immutable once sent
+      }
+
+      // Game state subcollections — both members can read & write
+      match / game_finish / { docId }  { allow read, write: if request.auth != null; }
+      match / game_hot_take / { docId } { allow read, write: if request.auth != null; }
+      match / game_wyr / { docId }     { allow read, write: if request.auth != null; }
+    }
+
+    // ── Tic-Tac-Toe game sessions ────────────────────────────────────────────
+    match / tic_tac_toe / { gameId } {
+      allow read, write: if request.auth != null;
+    }
+
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  SECTION 2 — FIREBASE STORAGE RULES
+//  Paste everything below into:
+//  Firebase Console → Storage → Rules tab → Publish
+//
+//  ⚠  This is a SEPARATE rule set from Firestore above.
+//     Do NOT paste both into the same console tab.
+// ─────────────────────────────────────────────────────────────────────────────
+
+rules_version = '2';
+service firebase.storage {
+  match / b / { bucket } / o {
+
+    // ── Profile photos ───────────────────────────────────────────────────────
+    // Path: users/{uid}/profile.jpg
+    // • Any signed-in user can READ photos (to display in member circles)
+    // • Only the owner can WRITE their own photo
+    match / users / { uid } / profile.jpg {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.size < 5 * 1024 * 1024          // max 5 MB
+        && request.resource.contentType.matches('image/.*');  // images only
+    }
+
+    // ── Block everything else ────────────────────────────────────────────────
+    match / { allPaths=**} {
+      allow read, write: if false;
+    }
+
+  }
+}

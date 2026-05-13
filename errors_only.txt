@@ -1,0 +1,204 @@
+﻿
+The client will now receive all logging from the daemon 
+(pid: 9592). The daemon log file: 
+C:\Users\Asus\.gradle\daemon\8.13\daemon-9592.out.log
+Caching disabled for task ':app:generateReleaseBuildConfig' 
+because:
+Caching disabled for task ':app:checkReleaseAarMetadata' 
+because:
+Caching disabled for task ':app:generateReleaseResValues' 
+because:
+Caching disabled for task 
+':app:processReleaseGoogleServices' because:
+Caching disabled for task ':app:mapReleaseSourceSetPaths' 
+because:
+Caching disabled for task ':app:generateReleaseResources' 
+because:
+Caching disabled for task ':app:mergeReleaseResources' 
+because:
+Caching disabled for task ':app:packageReleaseResources' 
+because:
+Caching disabled for task ':app:parseReleaseLocalResources' 
+because:
+Caching disabled for task 
+':app:createReleaseCompatibleScreenManifests' because:
+Caching disabled for task ':app:extractDeepLinksRelease' 
+because:
+Caching disabled for task ':app:processReleaseMainManifest' 
+because:
+Caching disabled for task ':app:processReleaseManifest' 
+because:
+Caching disabled for task 
+':app:processReleaseManifestForPackage' because:
+Skipping misunderstood TO dep string: 
+com.google.firebase:firebase-auth-ktx
+Skipping misunderstood TO dep string: 
+com.google.firebase:firebase-firestore-ktx
+Caching disabled for task ':app:processReleaseResources' 
+because:
+Caching disabled for task ':app:compileReleaseKotlin' 
+because:
+Task ':app:compileReleaseKotlin' is not up-to-date because:
+Kotlin source files: D:\#2 2026\APPS DEVELOPMENT\Inrovert 
+Matching Game\app\src\main\java\com\ns\findyourintroverfriend
+\admin\AdminDashboardScreen.kt, D:\#2 2026\APPS 
+DEVELOPMENT\Inrovert Matching Game\app\src\main\java\com\ns\f
+indyourintroverfriend\aesthetics\AestheticsFeedScreen.kt, 
+D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\ma
+in\java\com\ns\findyourintroverfriend\aesthetics\AestheticsFe
+edViewModel.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert 
+Matching Game\app\src\main\java\com\ns\findyourintroverfriend
+\answer\AnswerCardScreen.kt, D:\#2 2026\APPS 
+DEVELOPMENT\Inrovert Matching Game\app\src\main\java\com\ns\f
+indyourintroverfriend\answer\AnswerCardViewModel.kt, D:\#2 
+2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\main\jav
+a\com\ns\findyourintroverfriend\auth\AuthScreen.kt, D:\#2 
+2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\main\jav
+a\com\ns\findyourintroverfriend\auth\AuthViewModel.kt, D:\#2 
+2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\main\jav
+a\com\ns\findyourintroverfriend\auth\GameIntroScreen.kt, 
+D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\ma
+in\java\com\ns\findyourintroverfriend\billing\BillingService.
+kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\sr
+c\main\java\com\ns\findyourintroverfriend\chat\SlowChatScreen
+.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\s
+rc\main\java\com\ns\findyourintroverfriend\data\GroupFields.k
+t, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src
+\main\java\com\ns\findyourintroverfriend\day2\DareToShareScre
+en.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app
+\src\main\java\com\ns\findyourintroverfriend\day2\SecretCompl
+imentScreen.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert 
+Matching Game\app\src\main\java\com\ns\findyourintroverfriend
+\dev\DevBotManager.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert 
+Matching Game\app\src\main\java\com\ns\findyourintroverfriend
+\dev\DevConfig.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert 
+Matching Game\app\src\main\java\com\ns\findyourintroverfriend
+\dev\DevInspectorScreen.kt, D:\#2 2026\APPS 
+DEVELOPMENT\Inrovert Matching Game\app\src\main\java\com\ns\f
+indyourintroverfriend\dev\DevInspectorViewModel.kt, D:\#2 
+2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\main\jav
+a\com\ns\findyourintroverfriend\founders\FoundersScreen.kt, 
+D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\ma
+in\java\com\ns\findyourintroverfriend\game\GameInviteScreen.k
+t, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src
+\main\java\com\ns\findyourintroverfriend\game\GameInviteViewM
+odel.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\a
+pp\src\main\java\com\ns\findyourintroverfriend\game\TicTacToe
+Screen.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game
+\app\src\main\java\com\ns\findyourintroverfriend\game\TicTacT
+oeViewModel.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert 
+Matching Game\app\src\main\java\com\ns\findyourintroverfriend
+\home\ActiveRoomsScreen.kt, D:\#2 2026\APPS 
+DEVELOPMENT\Inrovert Matching Game\app\src\main\java\com\ns\f
+indyourintroverfriend\home\DevFlowPanel.kt, D:\#2 2026\APPS 
+DEVELOPMENT\Inrovert Matching Game\app\src\main\java\com\ns\f
+indyourintroverfriend\home\IslandHomeScreen.kt, D:\#2 
+2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\main\jav
+a\com\ns\findyourintroverfriend\home\IslandHomeViewModel.kt, 
+D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\ma
+in\java\com\ns\findyourintroverfriend\home\VeilHomeScreen.kt,
+ D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\m
+ain\java\com\ns\findyourintroverfriend\inbox\InboxScreen.kt, 
+D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\ma
+in\java\com\ns\findyourintroverfriend\inbox\InboxViewModel.kt
+, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\
+main\java\com\ns\findyourintroverfriend\lobby\LobbyWaitingScr
+een.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\ap
+p\src\main\java\com\ns\findyourintroverfriend\lobby\RoomLobby
+Screen.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game
+\app\src\main\java\com\ns\findyourintroverfriend\MainActivity
+.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\s
+rc\main\java\com\ns\findyourintroverfriend\myth\TrueOrMythScr
+een.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\ap
+p\src\main\java\com\ns\findyourintroverfriend\myth\TrueOrMyth
+SetupScreen.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert 
+Matching Game\app\src\main\java\com\ns\findyourintroverfriend
+\myth\TrueOrMythViewModel.kt, D:\#2 2026\APPS 
+DEVELOPMENT\Inrovert Matching Game\app\src\main\java\com\ns\f
+indyourintroverfriend\navigation\VeilNavGraph.kt, D:\#2 
+2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\main\jav
+a\com\ns\findyourintroverfriend\navigation\VeilRoute.kt, 
+D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\ma
+in\java\com\ns\findyourintroverfriend\notifications\VeilMessa
+gingService.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert 
+Matching Game\app\src\main\java\com\ns\findyourintroverfriend
+\notifications\VeilNotifier.kt, D:\#2 2026\APPS 
+DEVELOPMENT\Inrovert Matching Game\app\src\main\java\com\ns\f
+indyourintroverfriend\party\BondCalculator.kt, D:\#2 
+2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\main\jav
+a\com\ns\findyourintroverfriend\party\IslandBackgrounds.kt, 
+D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\ma
+in\java\com\ns\findyourintroverfriend\party\KnowEachOtherScre
+en.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app
+\src\main\java\com\ns\findyourintroverfriend\party\PartyIslan
+dScreen.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Gam
+e\app\src\main\java\com\ns\findyourintroverfriend\party\Party
+ViewModel.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching G
+ame\app\src\main\java\com\ns\findyourintroverfriend\payment\C
+hatCreditsScreen.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert 
+Matching Game\app\src\main\java\com\ns\findyourintroverfriend
+\payment\ChatCreditsViewModel.kt, D:\#2 2026\APPS 
+DEVELOPMENT\Inrovert Matching Game\app\src\main\java\com\ns\f
+indyourintroverfriend\payment\ChatUnlockScreen.kt, D:\#2 
+2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\main\jav
+a\com\ns\findyourintroverfriend\payment\PaymentViewModel.kt, 
+D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\ma
+in\java\com\ns\findyourintroverfriend\poll\WouldYouRatherScre
+en.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app
+\src\main\java\com\ns\findyourintroverfriend\poll\WouldYouRat
+herViewModel.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert 
+Matching Game\app\src\main\java\com\ns\findyourintroverfriend
+\profile\ProfileSetupScreen.kt, D:\#2 2026\APPS 
+DEVELOPMENT\Inrovert Matching Game\app\src\main\java\com\ns\f
+indyourintroverfriend\profile\ProfileSetupViewModel.kt, 
+D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\ma
+in\java\com\ns\findyourintroverfriend\question\MyQuestionsInb
+oxScreen.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Ga
+me\app\src\main\java\com\ns\findyourintroverfriend\question\Q
+uestionCardScreen.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert 
+Matching Game\app\src\main\java\com\ns\findyourintroverfriend
+\question\QuestionCardViewModel.kt, D:\#2 2026\APPS 
+DEVELOPMENT\Inrovert Matching Game\app\src\main\java\com\ns\f
+indyourintroverfriend\report\ReportSheet.kt, D:\#2 2026\APPS 
+DEVELOPMENT\Inrovert Matching Game\app\src\main\java\com\ns\f
+indyourintroverfriend\report\ReportViewModel.kt, D:\#2 
+2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\main\jav
+a\com\ns\findyourintroverfriend\reveal\RevealCeremonyScreen.k
+t, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src
+\main\java\com\ns\findyourintroverfriend\reveal\RevealCeremon
+yViewModel.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching 
+Game\app\src\main\java\com\ns\findyourintroverfriend\ui\theme
+\Color.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game
+\app\src\main\java\com\ns\findyourintroverfriend\ui\theme\The
+me.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app
+\src\main\java\com\ns\findyourintroverfriend\ui\theme\Type.kt
+, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\
+main\java\com\ns\findyourintroverfriend\ui\VeilSkeleton.kt, 
+D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\src\ma
+in\java\com\ns\findyourintroverfriend\util\CloudinaryUploader
+.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\s
+rc\main\java\com\ns\findyourintroverfriend\util\ContentModera
+tor.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\ap
+p\src\main\java\com\ns\findyourintroverfriend\util\PhotoValid
+ator.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\a
+pp\src\main\java\com\ns\findyourintroverfriend\util\StrikeMan
+ager.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\a
+pp\src\main\java\com\ns\findyourintroverfriend\VeilApplicatio
+n.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\
+src\main\java\com\ns\findyourintroverfriend\vibes\VibesScreen
+.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Game\app\s
+rc\main\java\com\ns\findyourintroverfriend\waiting\WaitingRoo
+mScreen.kt, D:\#2 2026\APPS DEVELOPMENT\Inrovert Matching Gam
+e\app\src\main\java\com\ns\findyourintroverfriend\waiting\Wai
+tingRoomViewModel.kt
+e: file:///D:/%232%202026/APPS%20DEVELOPMENT/Inrovert%20Match
+ing%20Game/app/src/main/java/com/ns/findyourintroverfriend/ho
+me/IslandHomeScreen.kt:1984:29 The API of this layout is 
+experimental and is likely to change in the future.
+e: file:///D:/%232%202026/APPS%20DEVELOPMENT/Inrovert%20Match
+ing%20Game/app/src/main/java/com/ns/findyourintroverfriend/ho
+me/IslandHomeScreen.kt:2021:29 The API of this layout is 
+experimental and is likely to change in the future.
+FAILURE: Build failed with an exception.
+
+

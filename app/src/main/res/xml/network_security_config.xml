@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Network Security Config for Veil
+    - Allows HTTPS to all domains (default Android behaviour)
+    - Explicitly trusts system CAs for Cloudinary, Google, and lh3.googleusercontent.com
+    - Cleartext (HTTP) is blocked on all domains for security
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Cloudinary CDN — profile and post photos -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">res.cloudinary.com</domain>
+        <domain includeSubdomains="true">cloudinary.com</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+
+    <!-- Google user content — profile photos from Google Sign-In -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">lh3.googleusercontent.com</domain>
+        <domain includeSubdomains="true">googleusercontent.com</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+
+    <!-- Firebase storage (if used in future) -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">firebasestorage.googleapis.com</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>
