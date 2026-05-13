@@ -540,7 +540,49 @@ private fun PhotoStep(vm: ProfileSetupViewModel) {
             )
         }
 
-        PNote("📸  Crop to a circle — face centered, clearly visible. This is your Veil identity.")
+
+        // ── Why we ask for a photo — reassurance box ─────────────────────────
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xFFF0F7FF))
+                .border(1.dp, Color(0xFFBFD9F5), RoundedCornerShape(14.dp))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    Icons.Rounded.Shield, null,
+                    tint     = Color(0xFF1A73E8),
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    "Why do we need a photo?",
+                    fontSize   = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color      = Color(0xFF1A73E8)
+                )
+            }
+            Text(
+                "Veil is an anonymous app — your real identity stays private. " +
+                "This photo is only used for a one-time identity check to keep the " +
+                "community safe and prevent fake accounts.",
+                fontSize   = 12.sp,
+                color      = Color(0xFF3A3A4A),
+                lineHeight = 18.sp
+            )
+            HorizontalDivider(color = Color(0xFFBFD9F5), thickness = 0.5.dp)
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                PNote("✅  No selfies are saved in our database.")
+                PNote("✅  Your photo is NOT shown to other users.")
+                PNote("✅  You can set a different profile picture after setup.")
+                PNote("✅  You can use any clear face photo from your gallery.")
+            }
+        }
     }
 }
 

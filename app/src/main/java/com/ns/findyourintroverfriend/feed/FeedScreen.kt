@@ -49,14 +49,16 @@ import com.ns.findyourintroverfriend.util.VeilSafetyUtil
 import java.text.SimpleDateFormat
 import java.util.*
 
-// ── Color tokens (clean B&W – no vibrant colours) ────────────────────────────
+// ── Design tokens ───────────────────────────────────────────────────────────────────
 private val IGBg        = Color(0xFFFFFFFF)
-private val IGDivider   = Color(0xFFDBDBDB)
-private val IGBlack     = Color(0xFF262626)
+private val IGBlack     = Color(0xFF0A0A0A)
 private val IGGray      = Color(0xFF8E8E8E)
+private val IGDivider   = Color(0xFFEFEFEF)
+private val IGRed       = Color(0xFFED4956)
+private val IGBlue      = Color(0xFF0095F6)
 private val IGLightGray = Color(0xFFF9F9F9)
-private val IGRed       = Color(0xFFED4956)   // Instagram like-heart red
-private val IGBlue      = Color(0xFF0095F6)   // Instagram action blue
+
+
 
 private fun igAgo(ms: Long): String {
     if (ms == 0L) return ""
@@ -493,12 +495,27 @@ private fun PostCard(
     isOwnPost        : Boolean    = false
 ) {
     val liked = post.likedBy.contains(myUid)
+    val isDev  = com.ns.findyourintroverfriend.util.VeilDevConfig.isDeveloper(post.authorUid)
     var doubleTapLike      by remember { mutableStateOf(false) }
     var showOptions        by remember { mutableStateOf(false) }
     // Full-screen viewer state: holds the full-res URL of the tapped image
     var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
 
-    Column(Modifier.fillMaxWidth().background(IGBg)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(if (isDev) Color(0xFFEFF6FF) else IGBg)
+            .then(
+                if (isDev) Modifier.border(
+                    androidx.compose.foundation.BorderStroke(
+                        2.dp,
+                        androidx.compose.ui.graphics.Brush.verticalGradient(
+                            listOf(Color(0xFF1A73E8).copy(0.6f), Color(0xFF1A73E8).copy(0.15f))
+                        )
+                    )
+                ) else Modifier
+            )
+    ) {
         // ── Header ────────────────────────────────────────────────────────────
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
@@ -511,8 +528,44 @@ private fun PostCard(
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f).clickable(onClick = onOpenProfile)) {
-                Text(post.authorAlias.ifBlank { "Anonymous" }, fontSize = 13.5.sp,
-                    fontWeight = FontWeight.SemiBold, color = IGBlack)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Text(
+                        post.authorAlias.ifBlank { "Anonymous" },
+                        fontSize   = 13.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color      = IGBlack
+                    )
+                    // 🔵 Developer blue-tick badge
+                    if (isDev) {
+                        Box(
+                            Modifier
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(50.dp))
+                                .background(Color(0xFF1A73E8))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Verified, null,
+                                    tint     = Color.White,
+                                    modifier = Modifier.size(9.dp)
+                                )
+                                Text(
+                                    "Developer",
+                                    fontSize   = 8.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color      = Color.White,
+                                    letterSpacing = 0.3.sp
+                                )
+                            }
+                        }
+                    }
+                }
                 if (post.createdAt > 0) {
                     Text(igAgo(post.createdAt), fontSize = 11.sp, color = IGGray)
                 }
