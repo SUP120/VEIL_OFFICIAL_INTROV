@@ -154,6 +154,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 
+
 import kotlinx.coroutines.tasks.await
 
 
@@ -161,282 +162,284 @@ import java.util.Calendar
 
 
 import kotlin.math.roundToInt
+import com.ns.findyourintroverfriend.util.VeilThemeManager
+import com.ns.findyourintroverfriend.util.LocalVeilIsDark
 
 
 
 
 
-// ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Data model ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
+// Data model 
 
 
 data class VeilHomeUiState(
 
 
-    val alias            : String  = "",
+ val alias : String = "",
 
 
-    val emoji            : String  = "ÃƒÂ°Ã…Â¸Ã…Â’Ã¢Â„Â¢",
+ val emoji : String = "\uD83C\uDF19",
 
 
-    val photoUrl         : String  = "",
+ val photoUrl : String = "",
 
 
-    val roomsCompleted   : Int     = 0,
+ val roomsCompleted : Int = 0,
 
 
-    val daysPlayed       : Int     = 0,
+ val daysPlayed : Int = 0,
 
 
-    val activeRooms      : Int     = 0,
+ val activeRooms : Int = 0,
 
 
-    val queueSize        : Int     = 0,
+ val queueSize : Int = 0,
 
 
-    val isLoading        : Boolean = true,
+ val isLoading : Boolean = true,
 
 
-    val isInBackgroundQueue : Boolean = false,
+ val isInBackgroundQueue : Boolean = false,
 
 
-    val bgQueueCount        : Int     = 0,
+ val bgQueueCount : Int = 0,
 
 
-    )
+ )
 
 
 
 
 
-// ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ ViewModel ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
+// ViewModel 
 
 
 class VeilHomeViewModel : ViewModel() {
 
 
-    private val _state = MutableStateFlow(VeilHomeUiState())
+ private val _state = MutableStateFlow(VeilHomeUiState())
 
 
-    val state: StateFlow<VeilHomeUiState> = _state.asStateFlow()
+ val state: StateFlow<VeilHomeUiState> = _state.asStateFlow()
 
 
-    val auth = FirebaseAuth.getInstance()
+ val auth = FirebaseAuth.getInstance()
 
 
-    val db   = FirebaseFirestore.getInstance()
+ val db = FirebaseFirestore.getInstance()
 
 
-    init { loadProfile() }
+ init { loadProfile() }
 
 
 
 
 
-    private fun loadProfile() {
+ private fun loadProfile() {
 
 
-        val uid = auth.currentUser?.uid ?: return
+ val uid = auth.currentUser?.uid ?: return
 
 
-        viewModelScope.launch {
+ viewModelScope.launch {
 
 
-            try {
+ try {
 
 
-                val doc = db.collection("users").document(uid).get().await()
+ val doc = db.collection("users").document(uid).get().await()
 
 
-                // Use Google profile photo from FirebaseAuth as fallback if Firestore is empty
+ // Use Google profile photo from FirebaseAuth as fallback if Firestore is empty
 
 
-                val authPhotoUrl = auth.currentUser?.photoUrl?.toString() ?: ""
+ val authPhotoUrl = auth.currentUser?.photoUrl?.toString() ?: ""
 
 
-                _state.value = VeilHomeUiState(
+ _state.value = VeilHomeUiState(
 
 
-                    alias          = doc.getString("alias")    ?: auth.currentUser?.displayName ?: "Wanderer",
+ alias = doc.getString("alias") ?: auth.currentUser?.displayName ?: "Wanderer",
 
 
-                    emoji          = doc.getString("emoji")    ?: "ÃƒÂ°Ã…Â¸Ã…Â’Ã¢Â„Â¢",
+ emoji = doc.getString("emoji") ?: "\uD83C\uDF19",
 
 
-                    photoUrl       = doc.getString("photoUrl")?.takeIf { it.isNotBlank() } ?: authPhotoUrl,
+ photoUrl = doc.getString("photoUrl")?.takeIf { it.isNotBlank() } ?: authPhotoUrl,
 
 
-                    roomsCompleted = 0,
+ roomsCompleted = 0,
 
 
-                    daysPlayed     = 0,
+ daysPlayed = 0,
 
 
-                    isLoading      = false,
+ isLoading = false,
 
 
-                    )
+ )
 
 
-            } catch (e: Exception) {
+ } catch (e: Exception) {
 
 
-                // Even on Firestore failure, show the Google photo
+ // Even on Firestore failure, show the Google photo
 
 
-                val authPhotoUrl = auth.currentUser?.photoUrl?.toString() ?: ""
+ val authPhotoUrl = auth.currentUser?.photoUrl?.toString() ?: ""
 
 
-                _state.value = _state.value.copy(
+ _state.value = _state.value.copy(
 
 
-                    isLoading = false,
+ isLoading = false,
 
 
-                    photoUrl  = authPhotoUrl,
+ photoUrl = authPhotoUrl,
 
 
-                    alias     = auth.currentUser?.displayName ?: "Wanderer",
+ alias = auth.currentUser?.displayName ?: "Wanderer",
 
 
-                    )
+ )
 
 
-            }
+ }
 
 
-        }
+ }
 
 
-    }
+ }
 
 
 
 
 
-    fun cancelBackgroundQueue(context: android.content.Context) {
+ fun cancelBackgroundQueue(context: android.content.Context) {
 
 
-        val uid = auth.currentUser?.uid ?: return
+ val uid = auth.currentUser?.uid ?: return
 
 
-        _state.value = _state.value.copy(isInBackgroundQueue = false)
+ _state.value = _state.value.copy(isInBackgroundQueue = false)
 
 
-        com.ns.findyourintroverfriend.waiting.QueueHeartbeatWorker.cancel(context)
+ com.ns.findyourintroverfriend.waiting.QueueHeartbeatWorker.cancel(context)
 
 
-        viewModelScope.launch {
+ viewModelScope.launch {
 
 
-            try {
+ try {
 
 
-                db.collection("matchmaking_queue").document(uid).delete().await()
+ db.collection("matchmaking_queue").document(uid).delete().await()
 
 
-                db.collection("users").document(uid).update("leftRoom", true).await()
+ db.collection("users").document(uid).update("leftRoom", true).await()
 
 
-            } catch (_: Exception) {}
+ } catch (_: Exception) {}
 
 
-        }
+ }
 
 
-    }
+ }
 
 
 
 
 
-    fun clearLeftRoomFlag() {
+ fun clearLeftRoomFlag() {
 
 
-        val uid = auth.currentUser?.uid ?: return
+ val uid = auth.currentUser?.uid ?: return
 
 
-        viewModelScope.launch { runCatching { db.collection("users").document(uid).update("leftRoom", false).await() } }
+ viewModelScope.launch { runCatching { db.collection("users").document(uid).update("leftRoom", false).await() } }
 
 
-    }
+ }
 
 
 
 
 
-    fun updateProfilePhoto(
+ fun updateProfilePhoto(
 
 
-        context  : android.content.Context,
+ context : android.content.Context,
 
 
-        uri      : Uri,
+ uri : Uri,
 
 
-        onResult : (success: Boolean, error: String?) -> Unit
+ onResult : (success: Boolean, error: String?) -> Unit
 
 
-    ) {
+ ) {
 
 
-        val uid = auth.currentUser?.uid ?: return onResult(false, "Not signed in")
+ val uid = auth.currentUser?.uid ?: return onResult(false, "Not signed in")
 
 
-        viewModelScope.launch {
+ viewModelScope.launch {
 
 
-            try {
+ try {
 
 
-                val cloudName    = com.ns.findyourintroverfriend.BuildConfig.CLOUDINARY_CLOUD_NAME
+ val cloudName = com.ns.findyourintroverfriend.BuildConfig.CLOUDINARY_CLOUD_NAME
 
 
-                val uploadPreset = com.ns.findyourintroverfriend.BuildConfig.CLOUDINARY_UPLOAD_PRESET
+ val uploadPreset = com.ns.findyourintroverfriend.BuildConfig.CLOUDINARY_UPLOAD_PRESET
 
 
-                if (cloudName.isBlank() || uploadPreset.isBlank()) {
+ if (cloudName.isBlank() || uploadPreset.isBlank()) {
 
 
-                    onResult(false, "Cloudinary not configured ÃƒÂ¢Ã¢Â‚Â¬Ã¢Â€Â check local.properties"); return@launch
+ onResult(false, "Cloudinary not configured - check local.properties"); return@launch
 
 
-                }
+ }
 
 
-                val url = com.ns.findyourintroverfriend.util.CloudinaryUploader.upload(
+ val url = com.ns.findyourintroverfriend.util.CloudinaryUploader.upload(
 
 
-                    context = context, uri = uri, cloudName = cloudName, uploadPreset = uploadPreset
+ context = context, uri = uri, cloudName = cloudName, uploadPreset = uploadPreset
 
 
-                )
+ )
 
 
-                db.collection("users").document(uid).update("photoUrl", url).await()
+ db.collection("users").document(uid).update("photoUrl", url).await()
 
 
-                _state.value = _state.value.copy(photoUrl = url)
+ _state.value = _state.value.copy(photoUrl = url)
 
 
-                onResult(true, null)
+ onResult(true, null)
 
 
-            } catch (e: Exception) {
+ } catch (e: Exception) {
 
 
-                android.util.Log.e("VeilHomeVM", "Photo update failed: ${e.message}", e)
+ android.util.Log.e("VeilHomeVM", "Photo update failed: ${e.message}", e)
 
 
-                onResult(false, e.message?.take(120))
+ onResult(false, e.message?.take(120))
 
 
-            }
+ }
 
 
-        }
+ }
 
 
-    }
+ }
 
 
 }
@@ -445,37 +448,23 @@ class VeilHomeViewModel : ViewModel() {
 
 
 
-// ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Colors ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
+// Colors 
 
 
-private val HBg         = Color(0xFFF7F5F0)
+private val HBg = Color(0xFFF7F5F0)
 
 
-private val HBg2        = Color(0xFFF2EDE6)
+private var _homeDark by mutableStateOf(VeilThemeManager.initialResolvedDark)
 
-
-private val HCard       = Color(0xFFFFFFFF)
-
-
-private val HCardBorder = Color(0xFFEDE8DF)
-
-
-private val HAccent     = Color(0xFF7C6AE8)
-
-
-private val HAccentSoft = Color(0xFFEFEBFF)
-
-
-private val HGold       = Color(0xFFE89820)
-
-
-private val HPrimary    = Color(0xFF1C1916)
-
-
-private val HSecondary  = Color(0xFF8A8480)
-
-
-private val HMuted      = Color(0xFFBBB5AC)
+private val HBg2        get() = if (_homeDark) Color(0xFF0D0D12) else Color(0xFFF2EDE6)
+private val HCard       get() = if (_homeDark) Color(0xFF1D1D28) else Color(0xFFFFFFFF)
+private val HCardBorder get() = if (_homeDark) Color(0xFF272730) else Color(0xFFEDE8DF)
+private val HAccent            = Color(0xFF7C6AE8)
+private val HAccentSoft get() = if (_homeDark) Color(0xFF1A1530) else Color(0xFFEFEBFF)
+private val HGold              = Color(0xFFE89820)
+private val HPrimary    get() = if (_homeDark) Color(0xFFDFDFEA) else Color(0xFF1C1916)
+private val HSecondary  get() = if (_homeDark) Color(0xFFAAAAB8) else Color(0xFF8A8480)
+private val HMuted      get() = if (_homeDark) Color(0xFF787888) else Color(0xFFBBB5AC)
 
 
 
@@ -484,16 +473,16 @@ private val HMuted      = Color(0xFFBBB5AC)
 private fun timeGreeting() = when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
 
 
-    in 5..11  -> "Good morning"
+ in 5..11 -> "Good morning"
 
 
-    in 12..16 -> "Good afternoon"
+ in 12..16 -> "Good afternoon"
 
 
-    in 17..20 -> "Good evening"
+ in 17..20 -> "Good evening"
 
 
-    else      -> "Good night"
+ else -> "Good night"
 
 
 }
@@ -502,7 +491,7 @@ private fun timeGreeting() = when (Calendar.getInstance().get(Calendar.HOUR_OF_D
 
 
 
-// ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ BackgroundQueueBanner ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
+// BackgroundQueueBanner 
 
 
 @Composable
@@ -511,64 +500,64 @@ private fun timeGreeting() = when (Calendar.getInstance().get(Calendar.HOUR_OF_D
 private fun BackgroundQueueBanner(queueCount: Int, onCancel: () -> Unit) {
 
 
-    val inf = rememberInfiniteTransition(label = "bqb")
+ val inf = rememberInfiniteTransition(label = "bqb")
 
 
-    val pulse by inf.animateFloat(0.7f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), "bqp")
+ val pulse by inf.animateFloat(0.7f, 1f, infiniteRepeatable(tween(900), RepeatMode.Reverse), "bqp")
 
 
-    Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)
+ Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 6.dp)
 
 
-        .clip(RoundedCornerShape(16.dp))
+ .clip(RoundedCornerShape(16.dp))
 
 
-        .background(Brush.horizontalGradient(listOf(Color(0xFF3A2400), Color(0xFF2E1A00))))
+ .background(Brush.horizontalGradient(listOf(Color(0xFF3A2400), Color(0xFF2E1A00))))
 
 
-        .border(1.dp, Brush.horizontalGradient(listOf(Color(0xFFFFC567).copy(0.6f), Color(0xFFFFD080).copy(0.3f))), RoundedCornerShape(16.dp))
+ .border(1.dp, Brush.horizontalGradient(listOf(Color(0xFFFFC567).copy(0.6f), Color(0xFFFFD080).copy(0.3f))), RoundedCornerShape(16.dp))
 
 
-        .padding(horizontal = 16.dp, vertical = 12.dp)) {
+ .padding(horizontal = 16.dp, vertical = 12.dp)) {
 
 
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+ Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
 
 
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.weight(1f)) {
+ Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.weight(1f)) {
 
 
-                Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFFFC567).copy(alpha = pulse)))
+ Box(Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFFFC567).copy(alpha = pulse)))
 
 
-                Column {
+ Column {
 
 
-                    Text("Finding your circleÃƒÂ¢Ã¢Â‚Â¬Ã‚Â¦", style = MaterialTheme.typography.labelMedium.copy(color = Color(0xFFFFC567), fontWeight = FontWeight.Bold, fontSize = 13.sp))
+ Text("Finding your circle...", style = MaterialTheme.typography.labelMedium.copy(color = Color(0xFFFFC567), fontWeight = FontWeight.Bold, fontSize = 13.sp))
 
 
-                    Text("${if (queueCount > 0) "$queueCount people in queue Â· " else ""}You'll be notified ÃƒÂ°Ã…Â¸Ã¢Â€ÂÃ¢Â€Â", style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFFBB8833), fontSize = 11.sp))
+ Text("${if (queueCount > 0) "$queueCount people in queue · " else ""}You'll be notified", style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFFBB8833), fontSize = 11.sp))
 
 
-                }
+ }
 
 
-            }
+ }
 
 
-            Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF1A0E00)).border(0.5.dp, Color(0xFF555533), RoundedCornerShape(8.dp)).clickable { onCancel() }.padding(horizontal = 10.dp, vertical = 6.dp)) {
+ Box(Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF1A0E00)).border(0.5.dp, Color(0xFF555533), RoundedCornerShape(8.dp)).clickable { onCancel() }.padding(horizontal = 10.dp, vertical = 6.dp)) {
 
 
-                Text("Cancel", style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF887755), fontSize = 11.sp))
+ Text("Cancel", style = MaterialTheme.typography.labelSmall.copy(color = Color(0xFF887755), fontSize = 11.sp))
 
 
-            }
+ }
 
 
-        }
+ }
 
 
-    }
+ }
 
 
 }
@@ -577,7 +566,7 @@ private fun BackgroundQueueBanner(queueCount: Int, onCancel: () -> Unit) {
 
 
 
-// ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ VeilHomeScreen ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
+// VeilHomeScreen 
 
 
 @Composable
@@ -586,1288 +575,1318 @@ private fun BackgroundQueueBanner(queueCount: Int, onCancel: () -> Unit) {
 fun VeilHomeScreen(
 
 
-    vm                 : VeilHomeViewModel = viewModel(),
+ vm : VeilHomeViewModel = viewModel(),
 
 
-    onFindRoom         : () -> Unit,
+ onFindRoom : () -> Unit,
 
 
-    onOpenSwipe        : () -> Unit = {},
+ onOpenSwipe : () -> Unit = {},
 
 
-    onOpenMatch        : (String) -> Unit = {},
+ onOpenMatch : (String) -> Unit = {},
 
 
-    onNavigateToMatches: () -> Unit = {},
+ onNavigateToMatches: () -> Unit = {},
 
 
-    onViewProfile      : () -> Unit = {},
+ onViewProfile : () -> Unit = {},
 
 
-    onViewRooms        : () -> Unit = {},
+ onViewRooms : () -> Unit = {},
 
 
-    onOpenFounders     : () -> Unit = {},
+ onOpenFounders : () -> Unit = {},
 
 
-    onOpenDevPanel     : () -> Unit = {},
+ onOpenDevPanel : () -> Unit = {},
 
 
-    onOpenProfileThemes: () -> Unit = {},
+ onOpenProfileThemes: () -> Unit = {},
 
 
-    onLogout           : () -> Unit = {},
+ onLogout : () -> Unit = {},
 
 
-    onOpenDms          : () -> Unit = {},
+ onOpenDms : () -> Unit = {},
 
 
-    onOpenCookieStore  : () -> Unit = {},
+ onOpenCookieStore : () -> Unit = {},
 
 
-    onOpenUserProfile  : (uid: String) -> Unit = {},
+ onOpenUserProfile : (uid: String) -> Unit = {},
 
 
-    onOpenListeningRoom: () -> Unit = {},
+ onOpenListeningRoom: () -> Unit = {},
 
 
-    onOpenInvite       : () -> Unit = {},
+ onOpenVoiceRooms    : () -> Unit = {},
 
 
-    ) {
+ onOpenGroups        : () -> Unit = {},
 
 
-    val state   by vm.state.collectAsStateWithLifecycle()
+ onOpenInvite        : () -> Unit = {},
 
 
-    val scroll   = androidx.compose.foundation.rememberScrollState()
+ onNavigateDrawGuess  : () -> Unit = {},
 
 
-    val haptic   = LocalHapticFeedback.current
+ ) {
 
 
-    val context  = LocalContext.current
+ val state by vm.state.collectAsStateWithLifecycle()
 
 
-    val scope    = androidx.compose.runtime.rememberCoroutineScope()
+ val scroll = androidx.compose.foundation.rememberScrollState()
 
 
-    val swipeVm : com.ns.findyourintroverfriend.swipe.SwipeViewModel = viewModel()
+ val haptic = LocalHapticFeedback.current
 
 
-    val authUid  = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
+ val context = LocalContext.current
 
 
-    val db       = remember { FirebaseFirestore.getInstance() }
+ val scope = androidx.compose.runtime.rememberCoroutineScope()
 
 
+ val swipeVm : com.ns.findyourintroverfriend.swipe.SwipeViewModel = viewModel()
 
 
+ val authUid = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
 
-    var showLogout         by remember { mutableStateOf(false) }
 
+ val db = remember { FirebaseFirestore.getInstance() }
 
-    var selectedTab        by rememberSaveable { mutableIntStateOf(0) }
 
 
-    var previousTab        by rememberSaveable { mutableIntStateOf(0) }
 
 
-    var isUploadingPhoto   by remember { mutableStateOf(false) }
+ var showLogout by remember { mutableStateOf(false) }
 
 
-    var photoUploadError   by remember { mutableStateOf<String?>(null) }
+ var selectedTab by rememberSaveable { mutableIntStateOf(0) }
 
 
+ var previousTab by rememberSaveable { mutableIntStateOf(0) }
 
 
+ var isUploadingPhoto by remember { mutableStateOf(false) }
 
-    // ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ 30-cookie welcome gift (shows once per account via Firestore flag) ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
 
+ var photoUploadError by remember { mutableStateOf<String?>(null) }
 
-    var showWelcomeGiftDialog by remember { mutableStateOf(false) }
 
 
-    var welcomeGiftClaiming   by remember { mutableStateOf(false) }
 
 
-    var welcomeGiftClaimed    by remember { mutableStateOf(false) }
+ // cookie 
 
 
+ var showWelcomeGiftDialog by remember { mutableStateOf(false) }
 
 
+ var welcomeGiftClaiming by remember { mutableStateOf(false) }
 
-    LaunchedEffect(authUid) {
 
+ var welcomeGiftClaimed by remember { mutableStateOf(false) }
 
-        if (authUid.isBlank()) return@LaunchedEffect
 
 
-        try {
 
 
-            val doc = db.collection("users").document(authUid).get().await()
+ LaunchedEffect(authUid) {
 
 
-            val already = doc.getBoolean("welcomeGiftClaimed") ?: false
+ if (authUid.isBlank()) return@LaunchedEffect
 
 
-            if (!already) showWelcomeGiftDialog = true
+ try {
 
 
-        } catch (_: Exception) {}
+ val doc = db.collection("users").document(authUid).get().await()
 
 
-    }
+ val already = doc.getBoolean("welcomeGiftClaimed") ?: false
 
 
+ if (!already) showWelcomeGiftDialog = true
 
 
+ } catch (_: Exception) {}
 
-    // ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ UCrop result receiver ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
 
+ }
 
-    val cropLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
 
 
-        val outUri = com.yalantis.ucrop.UCrop.getOutput(result.data ?: return@rememberLauncherForActivityResult)
 
 
-        if (result.resultCode == android.app.Activity.RESULT_OK && outUri != null) {
+ // UCrop 
 
 
-            isUploadingPhoto = true; photoUploadError = null
+ val cropLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
 
 
-            vm.updateProfilePhoto(context, outUri) { ok, err ->
+ val outUri = com.yalantis.ucrop.UCrop.getOutput(result.data ?: return@rememberLauncherForActivityResult)
 
 
-                isUploadingPhoto = false
+ if (result.resultCode == android.app.Activity.RESULT_OK && outUri != null) {
 
 
-                if (ok) { showLogout = false } else { photoUploadError = err }
+ isUploadingPhoto = true; photoUploadError = null
 
 
-            }
+ vm.updateProfilePhoto(context, outUri) { ok, err ->
 
 
-        }
+ isUploadingPhoto = false
 
 
-    }
+ if (ok) { showLogout = false } else { photoUploadError = err }
 
 
-    // ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Gallery picker ÃƒÂ¢Ã¢Â€Â Ã¢Â€Â™ launches UCrop ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
+ }
 
 
-    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { src ->
+ }
 
 
-        if (src == null) return@rememberLauncherForActivityResult
+ }
 
 
-        val dest = Uri.fromFile(java.io.File(context.cacheDir, "veil_profile_${System.currentTimeMillis()}.jpg"))
+ // UCrop 
 
 
-        cropLauncher.launch(
+ val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { src ->
 
 
-            com.yalantis.ucrop.UCrop.of(src, dest)
+ if (src == null) return@rememberLauncherForActivityResult
 
 
-                .withAspectRatio(1f, 1f).withMaxResultSize(600, 600)
+ val dest = Uri.fromFile(java.io.File(context.cacheDir, "veil_profile_${System.currentTimeMillis()}.jpg"))
 
 
-                .withOptions(com.yalantis.ucrop.UCrop.Options().apply {
+ cropLauncher.launch(
 
 
-                    setCircleDimmedLayer(true); setShowCropGrid(false)
+ com.yalantis.ucrop.UCrop.of(src, dest)
 
 
-                    setToolbarTitle("Move & scale")
+ .withAspectRatio(1f, 1f).withMaxResultSize(600, 600)
 
 
-                    setCompressionFormat(android.graphics.Bitmap.CompressFormat.JPEG)
+ .withOptions(com.yalantis.ucrop.UCrop.Options().apply {
 
 
-                    setCompressionQuality(90)
+ setCircleDimmedLayer(true); setShowCropGrid(false)
 
 
-                }).getIntent(context)
+ setToolbarTitle("Move & scale")
 
 
-        )
+ setCompressionFormat(android.graphics.Bitmap.CompressFormat.JPEG)
 
 
-    }
+ setCompressionQuality(90)
 
 
+ }).getIntent(context)
 
 
+ )
 
-    val isDev = remember {
 
+ }
 
-        FirebaseAuth.getInstance().currentUser?.email?.lowercase()
 
 
-            ?.let { it in com.ns.findyourintroverfriend.dev.DevConfig.DEV_EMAILS } == true
 
 
-    }
+ val isDev = remember {
 
 
+ FirebaseAuth.getInstance().currentUser?.email?.lowercase()
 
 
+ ?.let { it in com.ns.findyourintroverfriend.dev.DevConfig.DEV_EMAILS } == true
 
-    val deleteAccountUrl = "https://docs.google.com/forms/d/e/1FAIpQLScLs32PUEm-BFcwq_M8q-wy5a1M0d1ZIpOZoTW9a7BYNvlg6Q/viewform"
 
+ }
 
 
 
 
-    Scaffold(
 
+ val deleteAccountUrl = "https://docs.google.com/forms/d/e/1FAIpQLScLs32PUEm-BFcwq_M8q-wy5a1M0d1ZIpOZoTW9a7BYNvlg6Q/viewform"
 
-        containerColor = HBg,
 
 
-        bottomBar = {
 
 
-            NavigationBar(containerColor = HCard, tonalElevation = 0.dp,
+ val isDark = LocalVeilIsDark.current
+ SideEffect { _homeDark = isDark }
 
 
-                modifier = Modifier.shadow(elevation = 8.dp, spotColor = Color.Black.copy(0.06f)).border(0.5.dp, HCardBorder)) {
+ Scaffold(
 
 
-                // Tab 0 ÃƒÂ¢Ã¢Â‚Â¬Ã¢Â€Â Feed
+ containerColor = if (isDark) Color(0xFF111118) else HBg,
 
 
-                NavigationBarItem(selected = selectedTab == 0, onClick = { previousTab = selectedTab; selectedTab = 0 },
+ bottomBar = {
 
 
-                    icon = { Image(painterResource(R.drawable.ic_nav_home), null, Modifier.size(26.dp).alpha(if (selectedTab == 0) 1f else 0.45f)) },
+ NavigationBar(containerColor = if (isDark) Color(0xFF111118) else HCard, tonalElevation = 0.dp,
 
 
-                    label = null, colors = NavigationBarItemDefaults.colors(indicatorColor = HAccentSoft))
+ modifier = Modifier.shadow(elevation = 8.dp, spotColor = Color.Black.copy(0.06f)).border(0.5.dp, if (isDark) Color(0xFF272730) else HCardBorder)) {
 
 
-                // Tab 1 ÃƒÂ¢Ã¢Â‚Â¬Ã¢Â€Â Swipe (heart icon)
+ // Tab 0 — Feed
 
 
-                NavigationBarItem(selected = selectedTab == 1, onClick = { previousTab = selectedTab; selectedTab = 1 },
+ NavigationBarItem(selected = selectedTab == 0, onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); previousTab = selectedTab; selectedTab = 0 },
 
 
-                    icon = {
-
-
-                        Icon(
-
-
-                            imageVector = Icons.Rounded.FavoriteBorder,
-
-
-                            contentDescription = "Swipe",
-
-
-                            tint = if (selectedTab == 1) HAccent else HPrimary.copy(0.40f),
-
-
-                            modifier = Modifier.size(26.dp)
-
-
+ icon = { Image(
+                        painterResource(R.drawable.ic_nav_home), null,
+                        Modifier.size(26.dp),
+                        colorFilter = ColorFilter.tint(
+                            if (selectedTab == 0) HAccent
+                            else if (isDark) Color(0xFFDFDFEA).copy(alpha = 0.55f)
+                            else HPrimary.copy(alpha = 0.45f),
+                            BlendMode.SrcIn
                         )
+                    ) },
 
 
-                    },
+ label = null, colors = NavigationBarItemDefaults.colors(indicatorColor = if (isDark) Color(0xFF1A1530) else HAccentSoft, unselectedIconColor = if (isDark) Color(0xFFDFDFEA).copy(0.45f) else HPrimary.copy(0.40f)))
 
 
-                    label = null, colors = NavigationBarItemDefaults.colors(indicatorColor = HAccentSoft))
+ // Tab 1 — Explore / Games
 
 
-                // Tab 2 ÃƒÂ¢Ã¢Â‚Â¬Ã¢Â€Â Games
+ NavigationBarItem(selected = selectedTab == 1, onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); previousTab = selectedTab; selectedTab = 1 },
 
 
-                NavigationBarItem(selected = selectedTab == 2, onClick = { previousTab = selectedTab; selectedTab = 2 },
-
-
-                    icon = { Image(painterResource(R.drawable.ic_nav_gamepad), null, Modifier.size(26.dp).alpha(if (selectedTab == 2) 1f else 0.45f)) },
-
-
-                    label = null, colors = NavigationBarItemDefaults.colors(indicatorColor = HAccentSoft))
-
-
-                // Tab 3 ÃƒÂ¢Ã¢Â‚Â¬Ã¢Â€Â Profile
-
-
-                NavigationBarItem(selected = selectedTab == 3, onClick = { previousTab = selectedTab; selectedTab = 3 },
-
-
-                    icon = {
-
-
-                        Icon(
-
-
-                            imageVector = Icons.Rounded.Person,
-
-
-                            contentDescription = "Profile",
-
-
-                            tint = if (selectedTab == 3) HAccent else HPrimary.copy(0.40f),
-
-
-                            modifier = Modifier.size(26.dp)
-
-
+ icon = { Image(
+                        painterResource(R.drawable.ic_nav_gamepad), null,
+                        Modifier.size(26.dp),
+                        colorFilter = ColorFilter.tint(
+                            if (selectedTab == 1) HAccent
+                            else if (isDark) Color(0xFFDFDFEA).copy(alpha = 0.55f)
+                            else HPrimary.copy(alpha = 0.45f),
+                            BlendMode.SrcIn
                         )
+                    ) },
 
 
-                    },
+ label = null, colors = NavigationBarItemDefaults.colors(indicatorColor = if (isDark) Color(0xFF1A1530) else HAccentSoft, unselectedIconColor = if (isDark) Color(0xFFDFDFEA).copy(0.45f) else HPrimary.copy(0.40f)))
 
 
-                    label = null, colors = NavigationBarItemDefaults.colors(indicatorColor = HAccentSoft))
+ // Tab 2 — Swipe (heart icon)
 
 
-            }
+ NavigationBarItem(selected = selectedTab == 2, onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); previousTab = selectedTab; selectedTab = 2 },
 
 
-        }
+ icon = {
 
 
-    ) { scaffoldPadding ->
+ Icon(
 
 
-        // Determine slide direction based on tab navigation
+ imageVector = Icons.Rounded.FavoriteBorder,
 
 
-        val slideDirection = if (selectedTab > previousTab) {
+ contentDescription = "Swipe",
 
 
-            // Moving right (left to right)
+ tint = if (selectedTab == 2) HAccent else if (isDark) Color(0xFFDFDFEA).copy(0.45f) else HPrimary.copy(0.40f),
 
 
-            AnimatedContentTransitionScope.SlideDirection.Start
+ modifier = Modifier.size(26.dp)
 
 
-        } else {
+ )
 
 
-            // Moving left (right to left)
+ },
 
 
-            AnimatedContentTransitionScope.SlideDirection.End
+ label = null, colors = NavigationBarItemDefaults.colors(indicatorColor = if (isDark) Color(0xFF1A1530) else HAccentSoft, unselectedIconColor = if (isDark) Color(0xFFDFDFEA).copy(0.45f) else HPrimary.copy(0.40f)))
 
 
-        }
+ // Tab 3 — Profile
 
 
+ NavigationBarItem(selected = selectedTab == 3, onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); previousTab = selectedTab; selectedTab = 3 },
 
 
+ icon = {
 
-        AnimatedContent(
 
+ Icon(
 
-            targetState = selectedTab,
 
+ imageVector = Icons.Rounded.Person,
 
-            transitionSpec = {
 
+ contentDescription = "Profile",
 
-                (slideIntoContainer(
 
+ tint = if (selectedTab == 3) HAccent else if (isDark) Color(0xFFDFDFEA).copy(0.45f) else HPrimary.copy(0.40f),
 
-                    towards = slideDirection,
 
+ modifier = Modifier.size(26.dp)
 
-                    animationSpec = tween(100, easing = FastOutSlowInEasing)
 
+ )
 
-                ) togetherWith slideOutOfContainer(
 
+ },
 
-                    towards = slideDirection,
 
+ label = null, colors = NavigationBarItemDefaults.colors(indicatorColor = if (isDark) Color(0xFF1A1530) else HAccentSoft, unselectedIconColor = if (isDark) Color(0xFFDFDFEA).copy(0.45f) else HPrimary.copy(0.40f)))
 
-                    animationSpec = tween(100, easing = FastOutSlowInEasing)
 
+ }
 
-                ))
 
+ }
 
-            },
 
+ ) { scaffoldPadding ->
 
-            label = "tabContent"
 
+ // Determine slide direction based on tab navigation
 
-        ) { targetTab ->
 
+ val slideDirection = if (selectedTab > previousTab) {
 
-            when (targetTab) {
 
+ // Moving right (left to right)
 
-                0 -> com.ns.findyourintroverfriend.feed.FeedScreen(
 
+ AnimatedContentTransitionScope.SlideDirection.Start
 
-                    modifier          = Modifier.fillMaxSize(),
 
+ } else {
 
-                    bottomNavPadding  = scaffoldPadding.calculateBottomPadding(),
 
+ // Moving left (right to left)
 
-                    onOpenDms         = onOpenDms,
 
+ AnimatedContentTransitionScope.SlideDirection.End
 
-                    onOpenCookieStore = onOpenCookieStore,
 
+ }
 
-                    onOpenUserProfile = onOpenUserProfile
 
 
-                )
 
 
-                1 -> com.ns.findyourintroverfriend.swipe.SwipeContent(
+ AnimatedContent(
 
 
-                    vm = swipeVm,
+ targetState = selectedTab,
 
 
-                    modifier = Modifier.fillMaxSize().padding(scaffoldPadding),
+ transitionSpec = {
 
 
-                    onOpenMatch = onOpenMatch,
+ (slideIntoContainer(
 
 
-                    onNavigateToMatches = onNavigateToMatches
+ towards = slideDirection,
 
 
-                )
+ animationSpec = tween(100, easing = FastOutSlowInEasing)
 
 
-                2 -> com.ns.findyourintroverfriend.game.GameLobbyScreen()
+ ) togetherWith slideOutOfContainer(
 
 
+ towards = slideDirection,
 
 
+ animationSpec = tween(100, easing = FastOutSlowInEasing)
 
-                3 -> ProfileTab(
 
+ ))
 
-                    state            = state,
 
+ },
 
-                    vm               = vm,
 
+ label = "tabContent"
 
-                    isDev            = isDev,
 
+ ) { targetTab ->
 
-                    isUploadingPhoto = isUploadingPhoto,
 
+ when (targetTab) {
 
-                    photoUploadError = photoUploadError,
 
+ 0 -> Box(Modifier.fillMaxSize()) {
 
-                    deleteAccountUrl = deleteAccountUrl,
+     com.ns.findyourintroverfriend.feed.FeedScreen(
 
+         modifier = Modifier.fillMaxSize(),
 
-                    context          = context,
+         bottomNavPadding = scaffoldPadding.calculateBottomPadding(),
 
+         onOpenDms = onOpenDms,
 
-                    scaffoldPadding  = scaffoldPadding,
+         onOpenCookieStore = onOpenCookieStore,
 
+         onOpenUserProfile = onOpenUserProfile
 
-                    onGalleryLaunch  = { galleryLauncher.launch("image/*") },
+     )
 
+ }
 
-                    onOpenProfileThemes = onOpenProfileThemes,
 
+ 1 -> com.ns.findyourintroverfriend.game.GameLobbyScreen(
+     onNavigateDrawGuess = onNavigateDrawGuess,
+     onOpenVoiceRooms    = onOpenVoiceRooms,
+     onOpenGroups        = onOpenGroups,
+ )
 
-                    onOpenDevPanel   = onOpenDevPanel,
 
+ 2 -> com.ns.findyourintroverfriend.swipe.SwipeContent(
 
-                    onOpenCookieStore = onOpenCookieStore,
 
+ vm = swipeVm,
 
-                    onOpenInvite     = onOpenInvite,
 
+ modifier = Modifier.fillMaxSize().padding(scaffoldPadding),
 
-                    onLogout         = onLogout
 
+ onOpenMatch = onOpenMatch,
 
-                )
 
+ onNavigateToMatches = onNavigateToMatches
 
-            }
 
+ )
 
-        }
 
+ 3 -> ProfileTab(
 
 
+ state = state,
 
 
-        // ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Profile dialog ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
+ vm = vm,
 
 
-        if (showLogout) {
+ isDev = isDev,
 
 
-            androidx.compose.ui.window.Dialog(onDismissRequest = { showLogout = false }) {
+ isUploadingPhoto = isUploadingPhoto,
 
 
-                Box(
+ photoUploadError = photoUploadError,
 
 
-                    Modifier
+ deleteAccountUrl = deleteAccountUrl,
 
 
-                        .fillMaxWidth()
+ context = context,
 
 
-                        .clip(RoundedCornerShape(24.dp))
+ scaffoldPadding = scaffoldPadding,
 
 
-                        .background(HCard)
+ onGalleryLaunch = { galleryLauncher.launch("image/*") },
 
 
-                        .border(1.dp, HCardBorder, RoundedCornerShape(24.dp))
+ onOpenProfileThemes = onOpenProfileThemes,
 
 
-                ) {
+ onOpenDevPanel = onOpenDevPanel,
 
 
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+ onOpenCookieStore = onOpenCookieStore,
 
 
-                        Spacer(Modifier.height(32.dp))
+ onOpenInvite = onOpenInvite,
 
 
+ onLogout = onLogout
 
 
+ )
 
-                        // Profile picture
 
+ }
 
-                        Box(
 
+ }
 
-                            Modifier
 
 
-                                .size(80.dp)
 
 
-                                .clip(CircleShape)
+ // dialog 
 
 
-                                .background(HAccentSoft)
+ if (showLogout) {
 
 
-                                .border(2.5.dp, HAccent.copy(0.25f), CircleShape)
+ androidx.compose.ui.window.Dialog(onDismissRequest = { showLogout = false }) {
 
 
-                        ) {
+ Box(
 
 
-                            val p = state.photoUrl
+ Modifier
 
 
-                            if (p.isNotBlank()) {
+ .fillMaxWidth()
 
 
-                                VHMemberPhoto(p, ContentScale.Crop, Modifier.fillMaxSize().clip(CircleShape))
+ .clip(RoundedCornerShape(24.dp))
 
 
-                            } else {
+ .background(HCard)
 
 
-                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+ .border(1.dp, HCardBorder, RoundedCornerShape(24.dp))
 
 
-                                    Text(state.emoji.ifBlank { "ÃƒÂ¢Ã¢Â€Â”Ã¢Â€Â¹" }, fontSize = 32.sp)
+ ) {
 
 
-                                }
+ Column(horizontalAlignment = Alignment.CenterHorizontally) {
 
 
-                            }
+ Spacer(Modifier.height(32.dp))
 
 
-                        }
 
 
 
+ // Profile picture
 
 
-                        Spacer(Modifier.height(16.dp))
+ Box(
 
 
+ Modifier
 
 
+ .size(80.dp)
 
-                        // Name and email
 
+ .clip(CircleShape)
 
-                        Text(
 
+ .background(HAccentSoft)
 
-                            state.alias,
 
+ .border(2.5.dp, HAccent.copy(0.25f), CircleShape)
 
-                            fontSize = 18.sp,
 
+ ) {
 
-                            fontWeight = FontWeight.Bold,
 
+ val p = state.photoUrl
 
-                            color = HPrimary
 
+ if (p.isNotBlank()) {
 
-                        )
 
+ VHMemberPhoto(p, ContentScale.Crop, Modifier.fillMaxSize().clip(CircleShape))
 
-                        Spacer(Modifier.height(4.dp))
 
+ } else {
 
-                        Text(
 
+ Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
 
-                            "signed in with google",
 
+ Text(state.emoji.ifBlank { "" }, fontSize = 32.sp)
 
-                            fontSize = 12.sp,
 
+ }
 
-                            color = HSecondary
 
+ }
 
-                        )
 
+ }
 
 
 
 
-                        Spacer(Modifier.height(24.dp))
 
+ Spacer(Modifier.height(16.dp))
 
 
 
 
-                        // Divider
 
+ // Name and email
 
-                        HorizontalDivider(color = HCardBorder, thickness = 1.dp)
 
+ Text(
 
 
+ state.alias,
 
 
-                        // Menu items
+ fontSize = 18.sp,
 
 
-                        if (isDev) {
+ fontWeight = FontWeight.Bold,
 
 
-                            ModernMenuRow(icon = "ÃƒÂ¢Ã…Â’Ã‚Â¥", label = "Dev Panel", sublabel = null, tint = Color(0xFF6BBFCC)) {
+ color = HPrimary
 
 
-                                showLogout = false; onOpenDevPanel()
+ )
 
 
-                            }
+ Spacer(Modifier.height(4.dp))
 
 
-                            HorizontalDivider(color = HCardBorder, thickness = 1.dp)
+ Text(
 
 
-                        }
+ "signed in with google",
 
 
+ fontSize = 12.sp,
 
 
+ color = HSecondary
 
-                        ModernMenuRow(icon = "ÃƒÂ¢Ã¢Â€Â Ã¢Â€Â”", label = "View Profile", sublabel = "Manage account & settings", tint = HAccent) {
 
+ )
 
-                            showLogout = false
 
 
-                        }
 
 
+ Spacer(Modifier.height(24.dp))
 
 
 
-                        HorizontalDivider(color = HCardBorder, thickness = 1.dp)
 
 
+ // Divider
 
 
+ HorizontalDivider(color = HCardBorder, thickness = 1.dp)
 
-                        ModernMenuRow(icon = "ÃƒÂ¢Ã¢Â€Â Ã‚Â©", label = "Sign Out", sublabel = null, tint = Color(0xFFE85D5D)) {
 
 
-                            showLogout = false; onLogout()
 
 
-                        }
+ // Menu items
 
 
+ if (isDev) {
 
 
+ ModernMenuRow(icon = "⚙", label = "Dev Panel", sublabel = null, tint = Color(0xFF6BBFCC)) {
 
-                        HorizontalDivider(color = HCardBorder, thickness = 1.dp)
 
+ showLogout = false; onOpenDevPanel()
 
 
+ }
 
 
-                        Spacer(Modifier.height(12.dp))
+ HorizontalDivider(color = HCardBorder, thickness = 1.dp)
 
 
+ }
 
 
 
-                        // Footer links
 
 
-                        Row(
+ ModernMenuRow(icon = "👤", label = "View Profile", sublabel = "Manage account & settings", tint = HAccent) {
 
 
-                            Modifier.fillMaxWidth(),
+ showLogout = false
 
 
-                            horizontalArrangement = Arrangement.Center
+ }
 
 
-                        ) {
 
 
-                            Text(
 
+ HorizontalDivider(color = HCardBorder, thickness = 1.dp)
 
-                                "privacy policy",
 
 
-                                fontSize = 11.sp,
 
 
-                                color = HMuted,
+ ModernMenuRow(icon = "🚪", label = "Sign Out", sublabel = null, tint = Color(0xFFE85D5D)) {
 
 
-                                style = androidx.compose.ui.text.TextStyle(
+ showLogout = false; onLogout()
 
 
-                                    textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
+ }
 
 
-                                ),
 
 
-                                modifier = Modifier.clickable {
 
+ HorizontalDivider(color = HCardBorder, thickness = 1.dp)
 
-                                    android.content.Intent(
 
 
-                                        android.content.Intent.ACTION_VIEW,
 
 
-                                        android.net.Uri.parse("https://veil-app.in/privacy")
+ Spacer(Modifier.height(12.dp))
 
 
-                                    ).also { context.startActivity(it) }
 
 
-                                }
 
+ // Footer links
 
-                            )
 
+ Row(
 
-                            Text("  Â·  ", fontSize = 11.sp, color = HMuted)
 
+ Modifier.fillMaxWidth(),
 
-                            Text(
 
+ horizontalArrangement = Arrangement.Center
 
-                                "request account deletion",
 
+ ) {
 
-                                fontSize = 11.sp,
 
+ Text(
 
-                                color = HMuted,
 
+ "privacy policy",
 
-                                style = androidx.compose.ui.text.TextStyle(
 
+ fontSize = 11.sp,
 
-                                    textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
 
+ color = HMuted,
 
-                                ),
 
+ style = androidx.compose.ui.text.TextStyle(
 
-                                modifier = Modifier.clickable {
 
+ textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
 
-                                    android.content.Intent(
 
+ ),
 
-                                        android.content.Intent.ACTION_VIEW,
 
+ modifier = Modifier.clickable {
 
-                                        android.net.Uri.parse(deleteAccountUrl)
 
+ android.content.Intent(
 
-                                    ).also { context.startActivity(it) }
 
+ android.content.Intent.ACTION_VIEW,
 
-                                }
 
+ android.net.Uri.parse("https://veil-app.in/privacy")
 
-                            )
 
+ ).also { context.startActivity(it) }
 
-                        }
 
+ }
 
 
+ )
 
 
-                        Spacer(Modifier.height(16.dp))
+ Text(" ", fontSize = 11.sp, color = HMuted)
 
 
-                    }
+ Text(
 
 
-                }
+ "request account deletion",
 
 
-            }
+ fontSize = 11.sp,
 
 
-        }
+ color = HMuted,
 
 
-    }
+ style = androidx.compose.ui.text.TextStyle(
 
 
+ textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
 
 
+ ),
 
-    // \u2500\u2500 Welcome Gift Dialog (30 cookies, shows once per account) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
+ modifier = Modifier.clickable {
 
-    if (showWelcomeGiftDialog && !welcomeGiftClaimed) {
 
+ android.content.Intent(
 
-        androidx.compose.ui.window.Dialog(onDismissRequest = {}) {  // non-dismissable \u2014 must claim
 
+ android.content.Intent.ACTION_VIEW,
 
-            Box(
 
+ android.net.Uri.parse(deleteAccountUrl)
 
-                Modifier
 
+ ).also { context.startActivity(it) }
 
-                    .fillMaxWidth()
 
+ }
 
-                    .clip(RoundedCornerShape(24.dp))
 
+ )
 
-                    .background(HCard)
 
+ }
 
-                    .border(1.dp, HCardBorder, RoundedCornerShape(24.dp))
 
 
-            ) {
 
 
+ Spacer(Modifier.height(16.dp))
 
 
+ }
 
-                Column(
 
+ }
 
-                    Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 32.dp),
 
+ }
 
-                    horizontalAlignment = Alignment.CenterHorizontally,
 
+ }
 
-                    verticalArrangement = Arrangement.spacedBy(0.dp)
 
+ }
 
-                ) {
 
 
-                    // Pulsing cookie emoji
 
 
-                    val inf = androidx.compose.animation.core.rememberInfiniteTransition(label = "wg")
+ // \u2500\u2500 Welcome Gift Dialog (30 cookies, shows once per account) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 
-                    val pulse by inf.animateFloat(
+ if (showWelcomeGiftDialog && !welcomeGiftClaimed) {
 
 
-                        1f, 1.08f,
+ androidx.compose.ui.window.Dialog(onDismissRequest = {}) { // non-dismissable \u2014 must claim
 
 
-                        androidx.compose.animation.core.infiniteRepeatable(
+ Box(
 
 
-                            androidx.compose.animation.core.tween(1100, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+ Modifier
 
 
-                            androidx.compose.animation.core.RepeatMode.Reverse
+ .fillMaxWidth()
 
 
-                        ), "wgp"
+ .clip(RoundedCornerShape(24.dp))
 
 
-                    )
+ .background(HCard)
 
 
-                    Text("ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Âª", fontSize = 52.sp, modifier = Modifier.scale(pulse))
+ .border(1.dp, HCardBorder, RoundedCornerShape(24.dp))
 
 
+ ) {
 
 
 
-                    Spacer(Modifier.height(24.dp))
 
 
+ Column(
 
 
+ Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 32.dp),
 
-                    Text(
 
+ horizontalAlignment = Alignment.CenterHorizontally,
 
-                        "A little welcome gift.",
 
+ verticalArrangement = Arrangement.spacedBy(0.dp)
 
-                        fontSize = 22.sp,
 
+ ) {
 
-                        fontWeight = FontWeight.Bold,
 
+ // Pulsing cookie emoji
 
-                        color = HPrimary,
 
+ val inf = androidx.compose.animation.core.rememberInfiniteTransition(label = "wg")
 
-                        textAlign = TextAlign.Center,
 
+ val pulse by inf.animateFloat(
 
-                        letterSpacing = (-0.5).sp
 
+ 1f, 1.08f,
 
-                    )
 
+ androidx.compose.animation.core.infiniteRepeatable(
 
 
+ androidx.compose.animation.core.tween(1100, easing = androidx.compose.animation.core.FastOutSlowInEasing),
 
 
-                    Spacer(Modifier.height(8.dp))
+ androidx.compose.animation.core.RepeatMode.Reverse
 
 
+ ), "wgp"
 
 
+ )
 
-                    Text(
 
+ Text("", fontSize = 52.sp, modifier = Modifier.scale(pulse))
 
-                        "30 cookies, just for showing up.",
 
 
-                        fontSize = 14.sp,
 
 
-                        color = HSecondary,
+ Spacer(Modifier.height(24.dp))
 
 
-                        textAlign = TextAlign.Center,
 
 
-                        lineHeight = 20.sp
 
+ Text(
 
-                    )
 
+ "A little welcome gift.",
 
 
+ fontSize = 22.sp,
 
 
-                    Spacer(Modifier.height(28.dp))
+ fontWeight = FontWeight.Bold,
 
 
+ color = HPrimary,
 
 
+ textAlign = TextAlign.Center,
 
-                    HorizontalDivider(thickness = 1.dp, color = HCardBorder)
 
+ letterSpacing = (-0.5).sp
 
 
+ )
 
 
-                    Spacer(Modifier.height(24.dp))
 
 
 
+ Spacer(Modifier.height(8.dp))
 
 
-                    // Cookie count pill
 
 
-                    Box(
 
+ Text(
 
-                        Modifier
 
+ "30 cookies, just for showing up.",
 
-                            .clip(RoundedCornerShape(12.dp))
 
+ fontSize = 14.sp,
 
-                            .background(HBg)
 
+ color = HSecondary,
 
-                            .border(1.dp, HCardBorder, RoundedCornerShape(12.dp))
 
+ textAlign = TextAlign.Center,
 
-                            .padding(horizontal = 20.dp, vertical = 14.dp),
 
+ lineHeight = 20.sp
 
-                        contentAlignment = Alignment.Center
 
+ )
 
-                    ) {
 
 
-                        Row(
 
 
-                            verticalAlignment = Alignment.CenterVertically,
+ Spacer(Modifier.height(28.dp))
 
 
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
 
 
-                        ) {
 
+ HorizontalDivider(thickness = 1.dp, color = HCardBorder)
 
-                            Text("ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Âª", fontSize = 18.sp)
 
 
-                            Text(
 
 
-                                "30 cookies",
+ Spacer(Modifier.height(24.dp))
 
 
-                                fontSize = 17.sp,
 
 
-                                fontWeight = FontWeight.SemiBold,
 
+ // Cookie count pill
 
-                                color = HPrimary
 
+ Box(
 
-                            )
 
+ Modifier
 
-                        }
 
+ .clip(RoundedCornerShape(12.dp))
 
-                    }
 
+ .background(HBg)
 
 
+ .border(1.dp, HCardBorder, RoundedCornerShape(12.dp))
 
 
-                    Spacer(Modifier.height(24.dp))
+ .padding(horizontal = 20.dp, vertical = 14.dp),
 
 
+ contentAlignment = Alignment.Center
 
 
+ ) {
 
-                    // Claim button
 
+ Row(
 
-                    Button(
 
+ verticalAlignment = Alignment.CenterVertically,
 
-                        onClick = {
 
+ horizontalArrangement = Arrangement.spacedBy(10.dp)
 
-                            if (welcomeGiftClaiming) return@Button
 
+ ) {
 
-                            welcomeGiftClaiming = true
 
+ Text("", fontSize = 18.sp)
 
-                            scope.launch {
 
+ Text(
 
-                                try {
 
+ "30 cookies",
 
-                                    db.collection("users").document(authUid)
 
+ fontSize = 17.sp,
 
-                                        .update(mapOf(
 
+ fontWeight = FontWeight.SemiBold,
 
-                                            "cookieBalance"      to com.google.firebase.firestore.FieldValue.increment(30L),
 
+ color = HPrimary
 
-                                            "cookiesEarned"      to com.google.firebase.firestore.FieldValue.increment(30L),
 
+ )
 
-                                            "welcomeGiftClaimed" to true
 
+ }
 
-                                        )).await()
 
+ }
 
-                                    welcomeGiftClaimed = true
 
 
-                                    kotlinx.coroutines.delay(300L)
 
 
-                                    showWelcomeGiftDialog = false
+ Spacer(Modifier.height(24.dp))
 
 
-                                } catch (_: Exception) {
 
 
-                                    welcomeGiftClaiming = false
 
+ // Claim button
 
-                                }
 
+ Button(
 
-                            }
 
+ onClick = {
 
-                        },
 
+ if (welcomeGiftClaiming) return@Button
 
-                        enabled    = !welcomeGiftClaiming,
 
+ welcomeGiftClaiming = true
 
-                        modifier   = Modifier.fillMaxWidth().height(52.dp),
 
+ scope.launch {
 
-                        shape      = RoundedCornerShape(14.dp),
 
+ try {
 
-                        colors     = ButtonDefaults.buttonColors(
 
+ db.collection("users").document(authUid)
 
-                            containerColor         = HPrimary,
 
+ .update(mapOf(
 
-                            contentColor           = Color.White,
 
+ "cookieBalance" to com.google.firebase.firestore.FieldValue.increment(30L),
 
-                            disabledContainerColor = HPrimary.copy(0.15f),
 
+ "cookiesEarned" to com.google.firebase.firestore.FieldValue.increment(30L),
 
-                            disabledContentColor   = Color.White.copy(0.5f)
 
+ "welcomeGiftClaimed" to true
 
-                        ),
 
+ )).await()
 
-                        elevation = ButtonDefaults.buttonElevation(0.dp, 0.dp, 0.dp)
 
+ welcomeGiftClaimed = true
 
-                    ) {
 
+ kotlinx.coroutines.delay(300L)
 
-                        if (welcomeGiftClaiming) {
 
+ showWelcomeGiftDialog = false
 
-                            CircularProgressIndicator(
 
+ } catch (_: Exception) {
 
-                                Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp
 
+ welcomeGiftClaiming = false
 
-                            )
 
+ }
 
-                        } else {
 
+ }
 
-                            Text(
 
+ },
 
-                                "Claim your cookies",
 
+ enabled = !welcomeGiftClaiming,
 
-                                fontWeight = FontWeight.Bold,
 
+ modifier = Modifier.fillMaxWidth().height(52.dp),
 
-                                fontSize = 15.sp,
 
+ shape = RoundedCornerShape(14.dp),
 
-                                letterSpacing = 0.sp
 
+ colors = ButtonDefaults.buttonColors(
 
-                            )
 
+ containerColor = HPrimary,
 
-                        }
 
+ contentColor = Color.White,
 
-                    }
 
+ disabledContainerColor = HPrimary.copy(0.15f),
 
 
+ disabledContentColor = Color.White.copy(0.5f)
 
 
-                    Text(
+ ),
 
 
-                        "For all users \u2014 new and returning",
+ elevation = ButtonDefaults.buttonElevation(0.dp, 0.dp, 0.dp)
 
 
-                        fontSize = 11.sp,
+ ) {
 
 
-                        color = HMuted,
+ if (welcomeGiftClaiming) {
 
 
-                        textAlign = TextAlign.Center,
+ CircularProgressIndicator(
 
 
-                        letterSpacing = 0.3.sp
+ Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp
 
 
-                    )
+ )
 
 
-                }
+ } else {
 
 
-            }
+ Text(
 
 
-        }
+ "Claim your cookies",
 
 
-    }
+ fontWeight = FontWeight.Bold,
+
+
+ fontSize = 15.sp,
+
+
+ letterSpacing = 0.sp
+
+
+ )
+
+
+ }
+
+
+ }
+
+
+
+
+
+ Text(
+
+
+ "For all users \u2014 new and returning",
+
+
+ fontSize = 11.sp,
+
+
+ color = HMuted,
+
+
+ textAlign = TextAlign.Center,
+
+
+ letterSpacing = 0.3.sp
+
+
+ )
+
+
+ }
+
+
+ }
+
+
+ }
+
+
+ }
 
 
 
@@ -1885,37 +1904,24 @@ fun VeilHomeScreen(
 
 
 
-// ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Profile B&W palette (profile-only, does not affect other tabs) ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
+// 
 
 
-private val PBg         = Color(0xFFFFFFFF)
-
-
-private val PCard       = Color(0xFFFFFFFF)
-
-
-private val PBorder     = Color(0xFF000000).copy(alpha = 0.10f)
-
-
-private val PBorderHard = Color(0xFF000000).copy(alpha = 0.18f)
-
-
-private val PPrimary    = Color(0xFF0A0A0A)
-
-
-private val PSub        = Color(0xFF555555)
-
-
-private val PMuted      = Color(0xFF999999)
-
-
-private val PGhost      = Color(0xFFF2F2F2)
+private val PBg         get() = if (_homeDark) Color(0xFF111118) else Color(0xFFFFFFFF)
+private val PCard       get() = if (_homeDark) Color(0xFF1D1D28) else Color(0xFFFFFFFF)
+private val PBorder     get() = if (_homeDark) Color(0xFFFFFFFF).copy(alpha = 0.10f) else Color(0xFF000000).copy(alpha = 0.10f)
+private val PBorderHard get() = if (_homeDark) Color(0xFFFFFFFF).copy(alpha = 0.18f) else Color(0xFF000000).copy(alpha = 0.18f)
+private val PPrimary    get() = if (_homeDark) Color(0xFFDFDFEA) else Color(0xFF0A0A0A)
+private val PFill       get() = if (_homeDark) Color(0xFF2C2C3C) else Color(0xFF0A0A0A)
+private val PSub        get() = if (_homeDark) Color(0xFFAAAAB8) else Color(0xFF555555)
+private val PMuted      get() = if (_homeDark) Color(0xFF787888) else Color(0xFF999999)
+private val PGhost      get() = if (_homeDark) Color(0xFF1E1E2C) else Color(0xFFF2F2F2)
 
 
 
 
 
-// ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ ProfileTab ÃƒÂ¢Ã¢Â‚Â¬Ã¢Â€Â full-page profile screen ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
+// ProfileTab 
 
 
 @Composable
@@ -1924,1018 +1930,524 @@ private val PGhost      = Color(0xFFF2F2F2)
 private fun ProfileTab(
 
 
-    state            : VeilHomeUiState,
+ state : VeilHomeUiState,
 
 
-    vm               : VeilHomeViewModel,
+ vm : VeilHomeViewModel,
 
 
-    isDev            : Boolean,
+ isDev : Boolean,
 
 
-    isUploadingPhoto : Boolean,
+ isUploadingPhoto : Boolean,
 
 
-    photoUploadError : String?,
+ photoUploadError : String?,
 
 
-    deleteAccountUrl : String,
+ deleteAccountUrl : String,
 
 
-    context          : android.content.Context,
+ context : android.content.Context,
 
 
-    scaffoldPadding  : PaddingValues,
+ scaffoldPadding : PaddingValues,
 
 
-    onGalleryLaunch  : () -> Unit,
+ onGalleryLaunch : () -> Unit,
 
 
-    onOpenProfileThemes : () -> Unit,
+ onOpenProfileThemes : () -> Unit,
 
 
-    onOpenDevPanel   : () -> Unit,
+ onOpenDevPanel : () -> Unit,
 
 
-    onOpenCookieStore : () -> Unit,
+ onOpenCookieStore : () -> Unit,
 
 
-    onOpenInvite     : () -> Unit,
+ onOpenInvite : () -> Unit,
 
 
-    onLogout         : () -> Unit,
+ onLogout : () -> Unit,
 
 
+ ) {
+
+
+ val auth = FirebaseAuth.getInstance()
+
+
+ val db = FirebaseFirestore.getInstance()
+
+
+ val uid = auth.currentUser?.uid ?: ""
+
+
+ val email = auth.currentUser?.email ?: ""
+
+
+ val haptic = LocalHapticFeedback.current
+
+
+
+
+
+ // cookie 
+
+
+ var cookieBalance by remember { mutableIntStateOf(0) }
+
+
+ LaunchedEffect(uid) {
+
+
+ if (uid.isBlank()) return@LaunchedEffect
+
+
+ try {
+
+
+ val doc = db.collection("users").document(uid).get().await()
+
+
+ cookieBalance = (doc.getLong("cookieBalance") ?: 0L).toInt()
+
+
+ } catch (_: Exception) {}
+
+
+ }
+
+
+
+
+
+ // 
+
+
+ val shimTrans = rememberInfiniteTransition(label = "ps")
+
+
+ val shimX by shimTrans.animateFloat(
+
+
+ -800f, 800f, label = "psx",
+
+
+ animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing), RepeatMode.Restart)
+
+
+ )
+
+
+ val shimBrush = Brush.linearGradient(
+
+
+ colors = if (_homeDark) listOf(Color(0xFF1A1A26), Color(0xFF272733), Color(0xFF1A1A26)) else listOf(Color(0xFFEEEEEE), Color(0xFFF8F8F8), Color(0xFFEEEEEE)),
+
+
+ start = Offset(shimX - 200f, 0f), end = Offset(shimX + 200f, 0f)
+
+
+ )
+
+
+
+
+
+ // 
+
+
+ val ringTrans = rememberInfiniteTransition(label = "pr")
+
+
+ val ringScale by ringTrans.animateFloat(
+
+
+ 1f, 1.06f, label = "prs",
+ animationSpec = infiniteRepeatable(tween(2000, easing = FastOutSlowInEasing), RepeatMode.Reverse)
+ )
+
+
+ // 
+ // NOTE: copy profilepageani.lottie app/src/main/assets/profilepageani.lottie
+ val lottieComp by rememberLottieComposition(
+ LottieCompositionSpec.Asset("profilepageani.lottie")
+ )
+ val lottieProg by animateLottieCompositionAsState(
+ composition = lottieComp,
+ iterations = LottieConstants.IterateForever,
+ isPlaying = true
+ )
+
+
+ // 
+ // SKELETON
+ // 
+ if (state.isLoading) {
+ Column(
+ Modifier
+ .fillMaxSize()
+ .background(PBg)
+ .padding(scaffoldPadding)
+ .statusBarsPadding()
+ .verticalScroll(rememberScrollState())
+ ) {
+ Spacer(Modifier.height(24.dp))
+ // Animation placeholder
+ Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(180.dp)
+ .clip(RoundedCornerShape(24.dp)).background(shimBrush))
+ Spacer(Modifier.height(16.dp))
+ // Avatar card skeleton
+ Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(220.dp)
+ .clip(RoundedCornerShape(24.dp)).background(shimBrush))
+ Spacer(Modifier.height(16.dp))
+ // Stats skeleton
+ Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+ repeat(3) { Box(Modifier.weight(1f).height(72.dp).clip(RoundedCornerShape(16.dp)).background(shimBrush)) }
+ }
+ Spacer(Modifier.height(20.dp))
+ repeat(2) {
+ Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(140.dp)
+ .clip(RoundedCornerShape(20.dp)).background(shimBrush))
+ Spacer(Modifier.height(14.dp))
+ }
+ }
+ return
+ }
+
+
+ // 
+ // LOADED CONTENT
+ // 
+ Column(
+ Modifier
+ .fillMaxSize()
+ .background(PBg)
+ .padding(scaffoldPadding)
+ .verticalScroll(rememberScrollState())
+ .statusBarsPadding()
+ ) {
+ Spacer(Modifier.height(20.dp))
+
+ // 
+ Box(
+ Modifier
+ .fillMaxWidth()
+ .padding(horizontal = 20.dp)
+ .clip(RoundedCornerShape(24.dp))
+ .background(PCard)
+ .border(1.dp, PBorderHard, RoundedCornerShape(24.dp))
+ .padding(vertical = 28.dp, horizontal = 24.dp),
+ contentAlignment = Alignment.Center
+ ) {
+ Column(horizontalAlignment = Alignment.CenterHorizontally) {
+
+ // 
+ Box(contentAlignment = Alignment.Center) {
+ Box(
+ Modifier.size(108.dp).scale(ringScale).clip(CircleShape)
+ .border(1.5.dp, PBorder, CircleShape)
+ )
+ Box(
+ Modifier
+ .size(96.dp)
+ .clip(CircleShape)
+ .background(PGhost)
+ .border(2.dp, PPrimary, CircleShape)
+ .clickable {
+ haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+ onGalleryLaunch()
+ },
+ contentAlignment = Alignment.Center
+ ) {
+ if (state.photoUrl.isNotBlank()) {
+ VHMemberPhoto(state.photoUrl, ContentScale.Crop, Modifier.fillMaxSize().clip(CircleShape))
+ } else {
+ Text(state.emoji.ifBlank { "\uD83C\uDF19" }, fontSize = 38.sp)
+ }
+ if (isUploadingPhoto) {
+ Box(Modifier.fillMaxSize().background(Color.Black.copy(0.5f)), contentAlignment = Alignment.Center) {
+ CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
+ }
+ }
+ }
+ // Edit badge
+ Box(
+ Modifier
+ .align(Alignment.BottomEnd)
+ .offset(x = 3.dp, y = 3.dp)
+ .size(28.dp)
+ .clip(CircleShape)
+ .background(PFill)
+ .border(2.dp, PCard, CircleShape),
+ contentAlignment = Alignment.Center
+ ) {
+ Icon(Icons.Rounded.CameraAlt, null, tint = Color.White, modifier = Modifier.size(14.dp))
+ }
+ }
+
+ Spacer(Modifier.height(18.dp))
+
+ Text(
+ state.alias.ifBlank { "Wanderer" },
+ fontSize = 22.sp,
+ fontWeight = FontWeight.ExtraBold,
+ color = PPrimary,
+ letterSpacing = (-0.5).sp
+ )
+ Spacer(Modifier.height(3.dp))
+ Text(
+ email.ifBlank { "Signed in with Google" },
+ fontSize = 12.sp,
+ color = PSub,
+ letterSpacing = 0.sp
+ )
+
+ Spacer(Modifier.height(16.dp))
+
+ // 
+ Row(
+ Modifier
+ .clip(RoundedCornerShape(6.dp))
+ .background(PFill)
+ .padding(horizontal = 14.dp, vertical = 7.dp),
+ horizontalArrangement = Arrangement.spacedBy(7.dp),
+ verticalAlignment = Alignment.CenterVertically
+ ) {
+ Box(Modifier.size(6.dp).clip(CircleShape).background(Color.White.copy(0.7f)))
+ Text(
+ "Introvert Veil Member",
+ fontSize = 12.sp,
+ fontWeight = FontWeight.SemiBold,
+ color = Color.White,
+ letterSpacing = 0.3.sp
+ )
+ }
+
+ // Upload error
+ if (photoUploadError != null) {
+ Spacer(Modifier.height(12.dp))
+ Row(
+ Modifier
+ .clip(RoundedCornerShape(8.dp))
+ .border(1.dp, PPrimary.copy(0.15f), RoundedCornerShape(8.dp))
+ .background(PGhost)
+ .padding(horizontal = 12.dp, vertical = 8.dp),
+ horizontalArrangement = Arrangement.spacedBy(8.dp),
+ verticalAlignment = Alignment.CenterVertically
+ ) {
+ Text("", fontSize = 13.sp, color = PPrimary)
+ Text(photoUploadError, fontSize = 12.sp, color = PSub)
+ }
+ }
+ }
+ }
+
+ Spacer(Modifier.height(14.dp))
+
+ // Stats 
+ Row(
+ Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+ horizontalArrangement = Arrangement.spacedBy(10.dp)
+ ) {
+ PStatCard(Modifier.weight(1f), top = " $cookieBalance", bottom = "COOKIES")
+ PStatCard(Modifier.weight(1f), top = "\uD83C\uDF19", bottom = "ANONYMOUS")
+ PStatCard(Modifier.weight(1f), top = "", bottom = "VERIFIED")
+ }
+
+ Spacer(Modifier.height(24.dp))
+
+ // Features 
+ PSectionLabel("Features")
+
+ PCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+  PMenuRow(icon = "🍪", label = "Cookie Store",
+  sub = "Buy cookies · send compliments",
+  badge = if (cookieBalance > 0) "$cookieBalance" else null) {
+  haptic.performHapticFeedback(HapticFeedbackType.LongPress); onOpenCookieStore()
+  }
+  PDivider()
+  PMenuRow(icon = "👥", label = "Invite Friends",
+  sub = "Share Veil, grow the community",
+  badge = "FREE") {
+  haptic.performHapticFeedback(HapticFeedbackType.LongPress); onOpenInvite()
+  }
+
+  PDivider()
+
+  // ── Rate on Play Store ───────────────────────────────────────────────────
+  PMenuRow(
+      icon  = "⭐",
+      label = "Rate Veil on Play Store",
+      sub   = "Your review means the world to us",
+      badge = "QUICK"
+  ) {
+      haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+      android.content.Intent(
+          android.content.Intent.ACTION_VIEW,
+          android.net.Uri.parse("https://play.google.com/store/apps/details?id=com.ns.findyourintroverfriend")
+      ).also { context.startActivity(it) }
+  }
+
+  PDivider()
+
+  // ── Tell the Developers ──────────────────────────────────────────────────
+  PMenuRow(
+      icon  = "💌",
+      label = "Tell the Developers",
+      sub   = "Feedback, bugs, or just say hi",
+      badge = null
+  ) {
+      haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+      val intent = android.content.Intent(android.content.Intent.ACTION_SENDTO).apply {
+          data = android.net.Uri.parse("mailto:")
+          putExtra(android.content.Intent.EXTRA_EMAIL, arrayOf("solynlabs@gmail.com"))
+          putExtra(android.content.Intent.EXTRA_SUBJECT, "[Veil Feedback] from ${state.alias}")
+          putExtra(android.content.Intent.EXTRA_TEXT, "Hi Veil team,\n\n")
+      }
+      runCatching { context.startActivity(intent) }
+  }
+
+  if (isDev) {
+  PDivider()
+  PMenuRow(icon = "⚙", label = "Dev Panel",
+  sub = "Internal tools & debug", badge = "DEV") {
+  haptic.performHapticFeedback(HapticFeedbackType.LongPress); onOpenDevPanel()
+  }
+  }
+ }
+
+ Spacer(Modifier.height(14.dp))
+
+ // Account 
+ // Appearance
+ PSectionLabel("Appearance")
+
+ PCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+  val currentMode = VeilThemeManager.themeMode
+  Row(
+   modifier = Modifier
+    .fillMaxWidth()
+    .padding(horizontal = 14.dp, vertical = 14.dp),
+   horizontalArrangement = Arrangement.spacedBy(8.dp)
+  ) {
+   listOf(
+    Triple(VeilThemeManager.ThemeMode.SYSTEM, "System", "⊙"),
+    Triple(VeilThemeManager.ThemeMode.LIGHT,  "Light",  "☀"),
+    Triple(VeilThemeManager.ThemeMode.DARK,   "Dark",   "🌙"),
+   ).forEachIndexed { idx, (mode, label, icon) ->
+    val isSelected = currentMode == mode
+    val segBg by animateColorAsState(
+     if (isSelected) PFill else PGhost,
+     tween(220), label = "seg$idx"
+    )
+    val segTxt by animateColorAsState(
+     if (isSelected) Color.White else PSub,
+     tween(220), label = "tc$idx"
+    )
+    Box(
+     modifier = Modifier
+      .weight(1f)
+      .clip(RoundedCornerShape(10.dp))
+      .background(segBg)
+      .border(0.6.dp, if (isSelected) Color.Transparent else PBorder, RoundedCornerShape(10.dp))
+      .clickable {
+       haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+       VeilThemeManager.setTheme(context, mode)
+      }
+      .padding(vertical = 10.dp),
+     contentAlignment = Alignment.Center
     ) {
-
-
-    val auth   = FirebaseAuth.getInstance()
-
-
-    val db     = FirebaseFirestore.getInstance()
-
-
-    val uid    = auth.currentUser?.uid ?: ""
-
-
-    val email  = auth.currentUser?.email ?: ""
-
-
-    val haptic = LocalHapticFeedback.current
-
-
-
-
-
-    // ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Live cookie balance ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
-
-
-    var cookieBalance by remember { mutableIntStateOf(0) }
-
-
-    LaunchedEffect(uid) {
-
-
-        if (uid.isBlank()) return@LaunchedEffect
-
-
-        try {
-
-
-            val doc = db.collection("users").document(uid).get().await()
-
-
-            cookieBalance = (doc.getLong("cookieBalance") ?: 0L).toInt()
-
-
-        } catch (_: Exception) {}
-
-
+     Column(
+      horizontalAlignment = Alignment.CenterHorizontally,
+      verticalArrangement = Arrangement.spacedBy(2.dp)
+     ) {
+      Text(icon, fontSize = 15.sp, color = segTxt)
+      Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = segTxt, letterSpacing = 0.3.sp)
+     }
     }
+   }
+  }
+ }
+
+ Spacer(Modifier.height(14.dp))
+
+ PSectionLabel("Account")
+
+ PCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+     PMenuRow(icon = "\uD83D\uDEAA", label = "Sign Out",
+         sub = "See you soon", badge = null, isDanger = true) {
+         haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLogout()
+     }
+     PDivider()
+     PMenuRow(icon = "\uD83D\uDDD1", label = "Delete Account",
+         sub = "Permanently remove your data", badge = null, isDanger = true) {
+         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+         android.content.Intent(android.content.Intent.ACTION_VIEW,
+             android.net.Uri.parse(deleteAccountUrl)).also { context.startActivity(it) }
+     }
+ }
+
+ Spacer(Modifier.height(28.dp))
+
+ // ── Lottie banner — now at bottom ──────────────────────────────────────
+ Box(
+     Modifier
+         .fillMaxWidth()
+         .padding(horizontal = 20.dp)
+         .clip(RoundedCornerShape(24.dp))
+         .background(PGhost)
+         .border(1.dp, PBorder, RoundedCornerShape(24.dp))
+         .height(160.dp),
+     contentAlignment = Alignment.Center
+ ) {
+     LottieAnimation(
+         composition = lottieComp,
+         progress    = { lottieProg },
+         modifier    = Modifier.fillMaxSize()
+     )
+     Box(
+         Modifier
+             .align(Alignment.BottomStart)
+             .padding(14.dp)
+             .clip(RoundedCornerShape(8.dp))
+             .background(if (_homeDark) Color(0xFF2A2A3C).copy(0.92f) else Color.White.copy(0.82f))
+             .padding(horizontal = 10.dp, vertical = 4.dp)
+     ) {
+         Text("Your Space", fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+             color = if (_homeDark) Color(0xFFDFDFEA) else Color(0xFF1C1916), letterSpacing = 0.5.sp)
+     }
+ }
+
+ Spacer(Modifier.height(20.dp))
+
+ Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+     Row(horizontalArrangement = Arrangement.Center) {
+         Text("Privacy Policy", fontSize = 11.sp, color = PSub,
+             style = androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline),
+             modifier = Modifier.clickable {
+                 android.content.Intent(android.content.Intent.ACTION_VIEW,
+                     android.net.Uri.parse("https://veil-app.in/privacy")).also { context.startActivity(it) }
+             })
+         Text("   ", fontSize = 11.sp, color = PMuted)
+         Text("Terms of Service", fontSize = 11.sp, color = PSub,
+             style = androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline),
+             modifier = Modifier.clickable {
+                 android.content.Intent(android.content.Intent.ACTION_VIEW,
+                     android.net.Uri.parse("https://veil-app.in/terms")).also { context.startActivity(it) }
+             })
+     }
+     Spacer(Modifier.height(6.dp))
+     Text("Veil — made for introverts \uD83E\uDDD8", fontSize = 11.sp, color = PMuted, letterSpacing = 0.4.sp)
+ }
+
+ Spacer(Modifier.height(36.dp))
+ }  // Column (loaded content)
+}  // ProfileTab
 
 
-
-
-
-    // ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Shimmer (pure gray sweep) ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
-
-
-    val shimTrans = rememberInfiniteTransition(label = "ps")
-
-
-    val shimX by shimTrans.animateFloat(
-
-
-        -800f, 800f, label = "psx",
-
-
-        animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing), RepeatMode.Restart)
-
-
-    )
-
-
-    val shimBrush = Brush.linearGradient(
-
-
-        colors = listOf(Color(0xFFEEEEEE), Color(0xFFF8F8F8), Color(0xFFEEEEEE)),
-
-
-        start  = Offset(shimX - 200f, 0f), end = Offset(shimX + 200f, 0f)
-
-
-    )
-
-
-
-
-
-    // ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Avatar pulse ring ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
-
-
-    val ringTrans = rememberInfiniteTransition(label = "pr")
-
-
-    val ringScale by ringTrans.animateFloat(
-
-
-        1f, 1.06f, label = "prs",
-
-
-        animationSpec = infiniteRepeatable(tween(2000, easing = FastOutSlowInEasing), RepeatMode.Reverse)
-
-
-    )
-
-
-
-
-
-    // ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Lottie ÃƒÂ¢Ã¢Â‚Â¬Ã¢Â€Â profile page animation ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
-
-
-    // NOTE: copy profilepageani.lottie ÃƒÂ¢Ã¢Â€Â Ã¢Â€Â™ app/src/main/assets/profilepageani.lottie
-
-
-    val lottieComp by rememberLottieComposition(
-
-
-        LottieCompositionSpec.Asset("profilepageani.lottie")
-
-
-    )
-
-
-    val lottieProg by animateLottieCompositionAsState(
-
-
-        composition = lottieComp,
-
-
-        iterations  = LottieConstants.IterateForever,
-
-
-        isPlaying   = true
-
-
-    )
-
-
-
-
-
-    // ÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚Â
-
-
-    //  SKELETON
-
-
-    // ÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚Â
-
-
-    if (state.isLoading) {
-
-
-        Column(
-
-
-            Modifier
-
-
-                .fillMaxSize()
-
-
-                .background(PBg)
-
-
-                .padding(scaffoldPadding)
-
-
-                .statusBarsPadding()
-
-
-                .verticalScroll(rememberScrollState())
-
-
-        ) {
-
-
-            Spacer(Modifier.height(24.dp))
-
-
-            // Animation placeholder
-
-
-            Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(180.dp)
-
-
-                .clip(RoundedCornerShape(24.dp)).background(shimBrush))
-
-
-            Spacer(Modifier.height(16.dp))
-
-
-            // Avatar card skeleton
-
-
-            Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(220.dp)
-
-
-                .clip(RoundedCornerShape(24.dp)).background(shimBrush))
-
-
-            Spacer(Modifier.height(16.dp))
-
-
-            // Stats skeleton
-
-
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-
-
-                repeat(3) { Box(Modifier.weight(1f).height(72.dp).clip(RoundedCornerShape(16.dp)).background(shimBrush)) }
-
-
-            }
-
-
-            Spacer(Modifier.height(20.dp))
-
-
-            repeat(2) {
-
-
-                Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(140.dp)
-
-
-                    .clip(RoundedCornerShape(20.dp)).background(shimBrush))
-
-
-                Spacer(Modifier.height(14.dp))
-
-
-            }
-
-
-        }
-
-
-        return
-
-
-    }
-
-
-
-
-
-    // ÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚Â
-
-
-    //  LOADED CONTENT
-
-
-    // ÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚ÂÃƒÂ¢Ã¢Â€Â¢Ã‚Â
-
-
-    Column(
-
-
-        Modifier
-
-
-            .fillMaxSize()
-
-
-            .background(PBg)
-
-
-            .padding(scaffoldPadding)
-
-
-            .verticalScroll(rememberScrollState())
-
-
-            .statusBarsPadding()
-
-
-    ) {
-
-
-        Spacer(Modifier.height(20.dp))
-
-
-
-
-
-        // ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Lottie banner ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
-
-
-        Box(
-
-
-            Modifier
-
-
-                .fillMaxWidth()
-
-
-                .padding(horizontal = 20.dp)
-
-
-                .clip(RoundedCornerShape(24.dp))
-
-
-                .background(PGhost)
-
-
-                .border(1.dp, PBorder, RoundedCornerShape(24.dp))
-
-
-                .height(170.dp),
-
-
-            contentAlignment = Alignment.Center
-
-
-        ) {
-
-
-            LottieAnimation(
-
-
-                composition = lottieComp,
-
-
-                progress    = { lottieProg },
-
-
-                modifier    = Modifier.fillMaxSize()
-
-
-            )
-
-
-            // Subtle "Your Space" label
-
-
-            Box(
-
-
-                Modifier
-
-
-                    .align(Alignment.BottomStart)
-
-
-                    .padding(14.dp)
-
-
-                    .clip(RoundedCornerShape(8.dp))
-
-
-                    .background(Color.White.copy(0.82f))
-
-
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-
-
-            ) {
-
-
-                Text("Your Space", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = PPrimary, letterSpacing = 0.5.sp)
-
-
-            }
-
-
-        }
-
-
-
-
-
-        Spacer(Modifier.height(14.dp))
-
-
-
-
-
-        // ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Hero: Avatar + Name ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
-
-
-        Box(
-
-
-            Modifier
-
-
-                .fillMaxWidth()
-
-
-                .padding(horizontal = 20.dp)
-
-
-                .clip(RoundedCornerShape(24.dp))
-
-
-                .background(PCard)
-
-
-                .border(1.dp, PBorderHard, RoundedCornerShape(24.dp))
-
-
-                .padding(vertical = 28.dp, horizontal = 24.dp),
-
-
-            contentAlignment = Alignment.Center
-
-
-        ) {
-
-
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-
-
-
-
-
-                // ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Avatar with pulsing ring ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
-
-
-                Box(contentAlignment = Alignment.Center) {
-
-
-                    Box(
-
-
-                        Modifier.size(108.dp).scale(ringScale).clip(CircleShape)
-
-
-                            .border(1.5.dp, PBorder, CircleShape)
-
-
-                    )
-
-
-                    Box(
-
-
-                        Modifier
-
-
-                            .size(96.dp)
-
-
-                            .clip(CircleShape)
-
-
-                            .background(PGhost)
-
-
-                            .border(2.dp, PPrimary, CircleShape)
-
-
-                            .clickable {
-
-
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-
-
-                                onGalleryLaunch()
-
-
-                            },
-
-
-                        contentAlignment = Alignment.Center
-
-
-                    ) {
-
-
-                        if (state.photoUrl.isNotBlank()) {
-
-
-                            VHMemberPhoto(state.photoUrl, ContentScale.Crop, Modifier.fillMaxSize().clip(CircleShape))
-
-
-                        } else {
-
-
-                            Text(state.emoji.ifBlank { "ÃƒÂ°Ã…Â¸Ã…Â’Ã¢Â„Â¢" }, fontSize = 38.sp)
-
-
-                        }
-
-
-                        if (isUploadingPhoto) {
-
-
-                            Box(Modifier.fillMaxSize().background(Color.Black.copy(0.5f)), contentAlignment = Alignment.Center) {
-
-
-                                CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
-
-
-                            }
-
-
-                        }
-
-
-                    }
-
-
-                    // Edit badge
-
-
-                    Box(
-
-
-                        Modifier
-
-
-                            .align(Alignment.BottomEnd)
-
-
-                            .offset(x = 3.dp, y = 3.dp)
-
-
-                            .size(28.dp)
-
-
-                            .clip(CircleShape)
-
-
-                            .background(PPrimary)
-
-
-                            .border(2.dp, PCard, CircleShape),
-
-
-                        contentAlignment = Alignment.Center
-
-
-                    ) {
-
-
-                        Icon(Icons.Rounded.CameraAlt, null, tint = Color.White, modifier = Modifier.size(14.dp))
-
-
-                    }
-
-
-                }
-
-
-
-
-
-                Spacer(Modifier.height(18.dp))
-
-
-
-
-
-                Text(
-
-
-                    state.alias.ifBlank { "Wanderer" },
-
-
-                    fontSize = 22.sp,
-
-
-                    fontWeight = FontWeight.ExtraBold,
-
-
-                    color = PPrimary,
-
-
-                    letterSpacing = (-0.5).sp
-
-
-                )
-
-
-                Spacer(Modifier.height(3.dp))
-
-
-                Text(
-
-
-                    email.ifBlank { "Signed in with Google" },
-
-
-                    fontSize = 12.sp,
-
-
-                    color = PSub,
-
-
-                    letterSpacing = 0.sp
-
-
-                )
-
-
-
-
-
-                Spacer(Modifier.height(16.dp))
-
-
-
-
-
-                // ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Monochrome membership tag ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
-
-
-                Row(
-
-
-                    Modifier
-
-
-                        .clip(RoundedCornerShape(6.dp))
-
-
-                        .background(PPrimary)
-
-
-                        .padding(horizontal = 14.dp, vertical = 7.dp),
-
-
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
-
-
-                    verticalAlignment = Alignment.CenterVertically
-
-
-                ) {
-
-
-                    Box(Modifier.size(6.dp).clip(CircleShape).background(Color.White.copy(0.7f)))
-
-
-                    Text(
-
-
-                        "Introvert Â· Veil Member",
-
-
-                        fontSize = 12.sp,
-
-
-                        fontWeight = FontWeight.SemiBold,
-
-
-                        color = Color.White,
-
-
-                        letterSpacing = 0.3.sp
-
-
-                    )
-
-
-                }
-
-
-
-
-
-                // Upload error
-
-
-                if (photoUploadError != null) {
-
-
-                    Spacer(Modifier.height(12.dp))
-
-
-                    Row(
-
-
-                        Modifier
-
-
-                            .clip(RoundedCornerShape(8.dp))
-
-
-                            .border(1.dp, PPrimary.copy(0.15f), RoundedCornerShape(8.dp))
-
-
-                            .background(PGhost)
-
-
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-
-
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-
-
-                        verticalAlignment = Alignment.CenterVertically
-
-
-                    ) {
-
-
-                        Text("ÃƒÂ¢Ã…Â¡Ã‚Â ", fontSize = 13.sp, color = PPrimary)
-
-
-                        Text(photoUploadError, fontSize = 12.sp, color = PSub)
-
-
-                    }
-
-
-                }
-
-
-            }
-
-
-        }
-
-
-
-
-
-        Spacer(Modifier.height(14.dp))
-
-
-
-
-
-        // ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Stats row ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
-
-
-        Row(
-
-
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-
-
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-
-
-        ) {
-
-
-            PStatCard(Modifier.weight(1f), top = "ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Âª $cookieBalance", bottom = "COOKIES")
-
-
-            PStatCard(Modifier.weight(1f), top = "ÃƒÂ°Ã…Â¸Ã…Â’Ã¢Â„Â¢",               bottom = "ANONYMOUS")
-
-
-            PStatCard(Modifier.weight(1f), top = "ÃƒÂ¢Ã…Â“Ã‚Â¦",                bottom = "VERIFIED")
-
-
-        }
-
-
-
-
-
-        Spacer(Modifier.height(24.dp))
-
-
-
-
-
-        // ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Section: Features ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
-
-
-        PSectionLabel("Features")
-
-
-
-
-
-        PCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-
-
-            PMenuRow(icon = "ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Âª", label = "Cookie Store",
-
-
-                sub = "Buy cookies Â· send compliments",
-
-
-                badge = if (cookieBalance > 0) "$cookieBalance" else null) {
-
-
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress); onOpenCookieStore()
-
-
-            }
-
-
-            PDivider()
-
-
-            PMenuRow(icon = "ÃƒÂ°Ã…Â¸Ã…Â½Ã‚Â", label = "Invite Friends",
-
-
-                sub = "Share Veil, grow the community",
-
-
-                badge = "FREE") {
-
-
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress); onOpenInvite()
-
-
-            }
-
-
-            if (isDev) {
-
-
-                PDivider()
-
-
-                PMenuRow(icon = "ÃƒÂ¢Ã…Â’Ã‚Â¥", label = "Dev Panel",
-
-
-                    sub = "Internal tools & debug", badge = "DEV") {
-
-
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress); onOpenDevPanel()
-
-
-                }
-
-
-            }
-
-
-        }
-
-
-
-
-
-        Spacer(Modifier.height(14.dp))
-
-
-
-
-
-        // ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Section: Account ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
-
-
-        PSectionLabel("Account")
-
-
-
-
-
-        PCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-
-
-            PMenuRow(icon = "ÃƒÂ¢Ã¢Â€Â Ã‚Â©", label = "Sign Out",
-
-
-                sub = "See you soon", badge = null, isDanger = true) {
-
-
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLogout()
-
-
-            }
-
-
-            PDivider()
-
-
-            PMenuRow(icon = "ÃƒÂ°Ã…Â¸Ã¢Â€Â”Ã¢Â€Â˜", label = "Delete Account",
-
-
-                sub = "Permanently remove your data", badge = null, isDanger = true) {
-
-
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-
-
-                android.content.Intent(android.content.Intent.ACTION_VIEW,
-
-
-                    android.net.Uri.parse(deleteAccountUrl)).also { context.startActivity(it) }
-
-
-            }
-
-
-        }
-
-
-
-
-
-        Spacer(Modifier.height(28.dp))
-
-
-
-
-
-        // ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Footer ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
-
-
-        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-
-
-            Row(horizontalArrangement = Arrangement.Center) {
-
-
-                Text("Privacy Policy", fontSize = 11.sp, color = PSub,
-
-
-                    style = androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline),
-
-
-                    modifier = Modifier.clickable {
-
-
-                        android.content.Intent(android.content.Intent.ACTION_VIEW,
-
-
-                            android.net.Uri.parse("https://veil-app.in/privacy")).also { context.startActivity(it) }
-
-
-                    })
-
-
-                Text("  Â·  ", fontSize = 11.sp, color = PMuted)
-
-
-                Text("Terms of Service", fontSize = 11.sp, color = PSub,
-
-
-                    style = androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline),
-
-
-                    modifier = Modifier.clickable {
-
-
-                        android.content.Intent(android.content.Intent.ACTION_VIEW,
-
-
-                            android.net.Uri.parse("https://veil-app.in/terms")).also { context.startActivity(it) }
-
-
-                    })
-
-
-            }
-
-
-            Spacer(Modifier.height(6.dp))
-
-
-            Text("Veil Â· made for introverts ÃƒÂ°Ã…Â¸Ã…Â’Ã¢Â„Â¢", fontSize = 11.sp, color = PMuted, letterSpacing = 0.4.sp)
-
-
-        }
-
-
-
-
-
-        Spacer(Modifier.height(36.dp))
-
-
-    }
-
-
-}
-
-
-
-
-
-// ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ Profile-only B&W helper composables ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬ÃƒÂ¢Ã¢Â€ÂÃ¢Â‚Â¬
 
 
 
@@ -2947,61 +2459,61 @@ private fun ProfileTab(
 private fun PStatCard(modifier: Modifier, top: String, bottom: String) {
 
 
-    var pressed by remember { mutableStateOf(false) }
+ var pressed by remember { mutableStateOf(false) }
 
 
-    val sc by animateFloatAsState(if (pressed) 0.94f else 1f,
+ val sc by animateFloatAsState(if (pressed) 0.94f else 1f,
 
 
-        spring(stiffness = Spring.StiffnessMediumLow), label = "psc")
+ spring(stiffness = Spring.StiffnessMediumLow), label = "psc")
 
 
-    LaunchedEffect(pressed) { if (pressed) { kotlinx.coroutines.delay(80); pressed = false } }
+ LaunchedEffect(pressed) { if (pressed) { kotlinx.coroutines.delay(80); pressed = false } }
 
 
-    Box(
+ Box(
 
 
-        modifier
+ modifier
 
 
-            .scale(sc)
+ .scale(sc)
 
 
-            .clip(RoundedCornerShape(16.dp))
+ .clip(RoundedCornerShape(16.dp))
 
 
-            .background(PGhost)
+ .background(PGhost)
 
 
-            .border(1.dp, PBorderHard, RoundedCornerShape(16.dp))
+ .border(1.dp, PBorderHard, RoundedCornerShape(16.dp))
 
 
-            .clickable { pressed = true }
+ .clickable { pressed = true }
 
 
-            .padding(vertical = 16.dp),
+ .padding(vertical = 16.dp),
 
 
-        contentAlignment = Alignment.Center
+ contentAlignment = Alignment.Center
 
 
-    ) {
+ ) {
 
 
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+ Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
 
 
-            Text(top,    fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = PPrimary)
+ Text(top, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = PPrimary)
 
 
-            Text(bottom, fontSize = 9.sp,  fontWeight = FontWeight.Bold,      color = PMuted, letterSpacing = 1.sp)
+ Text(bottom, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = PMuted, letterSpacing = 1.sp)
 
 
-        }
+ }
 
 
-    }
+ }
 
 
 }
@@ -3016,22 +2528,22 @@ private fun PStatCard(modifier: Modifier, top: String, bottom: String) {
 private fun PSectionLabel(label: String) {
 
 
-    Text(
+ Text(
 
 
-        label.uppercase(),
+ label.uppercase(),
 
 
-        fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = PMuted,
+ fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = PMuted,
 
 
-        letterSpacing = 2.sp,
+ letterSpacing = 2.sp,
 
 
-        modifier = Modifier.padding(start = 28.dp, bottom = 8.dp)
+ modifier = Modifier.padding(start = 28.dp, bottom = 8.dp)
 
 
-    )
+ )
 
 
 }
@@ -3046,22 +2558,22 @@ private fun PSectionLabel(label: String) {
 private fun PCard(modifier: Modifier, content: @Composable () -> Unit) {
 
 
-    Column(
+ Column(
 
 
-        modifier
+ modifier
 
 
-            .clip(RoundedCornerShape(20.dp))
+ .clip(RoundedCornerShape(20.dp))
 
 
-            .background(PCard)
+ .background(PCard)
 
 
-            .border(1.dp, PBorderHard, RoundedCornerShape(20.dp))
+ .border(1.dp, PBorderHard, RoundedCornerShape(20.dp))
 
 
-    ) { content() }
+ ) { content() }
 
 
 }
@@ -3076,7 +2588,7 @@ private fun PCard(modifier: Modifier, content: @Composable () -> Unit) {
 private fun PDivider() {
 
 
-    HorizontalDivider(modifier = Modifier.padding(start = 64.dp), color = PBorder, thickness = 0.5.dp)
+ HorizontalDivider(modifier = Modifier.padding(start = 64.dp), color = PBorder, thickness = 0.5.dp)
 
 
 }
@@ -3091,163 +2603,163 @@ private fun PDivider() {
 private fun PMenuRow(
 
 
-    icon     : String,
+ icon : String,
 
 
-    label    : String,
+ label : String,
 
 
-    sub      : String?,
+ sub : String?,
 
 
-    badge    : String?,
+ badge : String?,
 
 
-    isDanger : Boolean = false,
+ isDanger : Boolean = false,
 
 
-    onClick  : () -> Unit
+ onClick : () -> Unit
 
 
 ) {
 
 
-    var pressed by remember { mutableStateOf(false) }
+ var pressed by remember { mutableStateOf(false) }
 
 
-    val bgAlpha by animateFloatAsState(if (pressed) 0.05f else 0f, tween(80), label = "pm")
+ val bgAlpha by animateFloatAsState(if (pressed) 0.05f else 0f, tween(80), label = "pm")
 
 
-    LaunchedEffect(pressed) { if (pressed) { kotlinx.coroutines.delay(110); pressed = false } }
+ LaunchedEffect(pressed) { if (pressed) { kotlinx.coroutines.delay(110); pressed = false } }
 
 
 
 
 
-    Row(
+ Row(
 
 
-        Modifier
+ Modifier
 
 
-            .fillMaxWidth()
+ .fillMaxWidth()
 
 
-            .background(PPrimary.copy(alpha = bgAlpha))
+ .background(PPrimary.copy(alpha = bgAlpha))
 
 
-            .clickable { pressed = true; onClick() }
+ .clickable { pressed = true; onClick() }
 
 
-            .padding(horizontal = 18.dp, vertical = 15.dp),
+ .padding(horizontal = 18.dp, vertical = 15.dp),
 
 
-        verticalAlignment = Alignment.CenterVertically,
+ verticalAlignment = Alignment.CenterVertically,
 
 
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
+ horizontalArrangement = Arrangement.spacedBy(14.dp)
 
 
-    ) {
+ ) {
 
 
-        // Icon chip ÃƒÂ¢Ã¢Â‚Â¬Ã¢Â€Â monochrome, filled black if danger else outlined
+ // Icon chip monochrome, filled black if danger else outlined
 
 
-        Box(
+ Box(
 
 
-            Modifier
+ Modifier
 
 
-                .size(40.dp)
+ .size(40.dp)
 
 
-                .clip(RoundedCornerShape(10.dp))
+ .clip(RoundedCornerShape(10.dp))
 
 
-                .background(if (isDanger) PPrimary else PGhost)
+ .background(if (isDanger) PFill else PGhost)
 
 
-                .border(1.dp, if (isDanger) Color.Transparent else PBorderHard, RoundedCornerShape(10.dp)),
+ .border(1.dp, if (isDanger) Color.Transparent else PBorderHard, RoundedCornerShape(10.dp)),
 
 
-            contentAlignment = Alignment.Center
+ contentAlignment = Alignment.Center
 
 
-        ) {
+ ) {
 
 
-            Text(icon, fontSize = 18.sp)
+ Text(icon, fontSize = 18.sp)
 
 
-        }
+ }
 
 
 
 
 
-        // Label + sub
+ // Label + sub
 
 
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+ Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
 
 
-            Text(label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+ Text(label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
 
 
-                color = if (isDanger) PPrimary else PPrimary)
+ color = if (isDanger) PPrimary else PPrimary)
 
 
-            if (sub != null) Text(sub, fontSize = 12.sp, color = PSub, lineHeight = 16.sp)
+ if (sub != null) Text(sub, fontSize = 12.sp, color = PSub, lineHeight = 16.sp)
 
 
-        }
+ }
 
 
 
 
 
-        // Right end: badge or chevron
+ // Right end: badge or chevron
 
 
-        if (badge != null) {
+ if (badge != null) {
 
 
-            Box(
+ Box(
 
 
-                Modifier
+ Modifier
 
 
-                    .clip(RoundedCornerShape(6.dp))
+ .clip(RoundedCornerShape(6.dp))
 
 
-                    .background(PPrimary)
+ .background(PFill)
 
 
-                    .padding(horizontal = 8.dp, vertical = 3.dp)
+ .padding(horizontal = 8.dp, vertical = 3.dp)
 
 
-            ) {
+ ) {
 
 
-                Text(badge, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White, letterSpacing = 0.5.sp)
+ Text(badge, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White, letterSpacing = 0.5.sp)
 
 
-            }
+ }
 
 
-        } else {
+ } else {
 
 
-            Text("ÃƒÂ¢Ã¢Â‚Â¬Ã‚Âº", fontSize = 22.sp, color = PMuted, fontWeight = FontWeight.Light)
+ Text("", fontSize = 22.sp, color = PMuted, fontWeight = FontWeight.Light)
 
 
-        }
+ }
 
 
-    }
+ }
 
 
 }
@@ -3259,7 +2771,7 @@ private fun PMenuRow(
 
 
 
-// Ã¢Â”Â€Ã¢Â”Â€ Shared helpers (used in HomeTab sheet + ProfileTab) Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€Ã¢Â”Â€
+// ProfileTab 
 
 
 
@@ -3271,34 +2783,34 @@ private fun PMenuRow(
 private fun VHMemberPhoto(
 
 
-    photoUrl     : String,
+ photoUrl : String,
 
 
-    contentScale : ContentScale = ContentScale.Crop,
+ contentScale : ContentScale = ContentScale.Crop,
 
 
-    modifier     : Modifier = Modifier
+ modifier : Modifier = Modifier
 
 
 ) {
 
 
-    coil.compose.AsyncImage(
+ coil.compose.AsyncImage(
 
 
-        model              = photoUrl,
+ model = photoUrl,
 
 
-        contentDescription = null,
+ contentDescription = null,
 
 
-        contentScale       = contentScale,
+ contentScale = contentScale,
 
 
-        modifier           = modifier
+ modifier = modifier
 
 
-    )
+ )
 
 
 }
@@ -3313,46 +2825,46 @@ private fun VHMemberPhoto(
 private fun AvatarSquircle(state: VeilHomeUiState, onClick: () -> Unit) {
 
 
-    Box(
+ Box(
 
 
-        Modifier
+ Modifier
 
 
-            .size(52.dp)
+ .size(52.dp)
 
 
-            .clip(RoundedCornerShape(16.dp))
+ .clip(RoundedCornerShape(16.dp))
 
 
-            .background(HAccentSoft)
+ .background(HAccentSoft)
 
 
-            .border(1.5.dp, HAccent.copy(0.25f), RoundedCornerShape(16.dp))
+ .border(1.5.dp, HAccent.copy(0.25f), RoundedCornerShape(16.dp))
 
 
-            .clickable { onClick() },
+ .clickable { onClick() },
 
 
-        contentAlignment = Alignment.Center
+ contentAlignment = Alignment.Center
 
 
-    ) {
+ ) {
 
 
-        if (state.photoUrl.isNotBlank() && !state.isLoading)
+ if (state.photoUrl.isNotBlank() && !state.isLoading)
 
 
-            VHMemberPhoto(state.photoUrl, ContentScale.Crop, Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)))
+ VHMemberPhoto(state.photoUrl, ContentScale.Crop, Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)))
 
 
-        else
+ else
 
 
-            Text(state.emoji.ifBlank { "o" }, fontSize = 22.sp)
+ Text(state.emoji.ifBlank { "o" }, fontSize = 22.sp)
 
 
-    }
+ }
 
 
 }
@@ -3367,70 +2879,70 @@ private fun AvatarSquircle(state: VeilHomeUiState, onClick: () -> Unit) {
 private fun ModernMenuRow(
 
 
-    icon     : String,
+ icon : String,
 
 
-    label    : String,
+ label : String,
 
 
-    sublabel : String?,
+ sublabel : String?,
 
 
-    tint     : Color,
+ tint : Color,
 
 
-    onClick  : () -> Unit
+ onClick : () -> Unit
 
 
 ) {
 
 
-    Row(
+ Row(
 
 
-        Modifier
+ Modifier
 
 
-            .fillMaxWidth()
+ .fillMaxWidth()
 
 
-            .clickable { onClick() }
+ .clickable { onClick() }
 
 
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+ .padding(horizontal = 20.dp, vertical = 16.dp),
 
 
-        verticalAlignment = Alignment.CenterVertically,
+ verticalAlignment = Alignment.CenterVertically,
 
 
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
+ horizontalArrangement = Arrangement.spacedBy(14.dp)
 
 
-    ) {
+ ) {
 
 
-        Text(icon, fontSize = 20.sp, color = tint)
+ Text(icon, fontSize = 20.sp, color = tint)
 
 
-        Column(Modifier.weight(1f)) {
+ Column(Modifier.weight(1f)) {
 
 
-            Text(label, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = HPrimary)
+ Text(label, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = HPrimary)
 
 
-            if (sublabel != null)
+ if (sublabel != null)
 
 
-                Text(sublabel, fontSize = 12.sp, color = HSecondary, lineHeight = 16.sp)
+ Text(sublabel, fontSize = 12.sp, color = HSecondary, lineHeight = 16.sp)
 
 
-        }
+ }
 
 
-        Text("\u203A", fontSize = 20.sp, color = HMuted)
+ Text("\u203A", fontSize = 20.sp, color = HMuted)
 
 
-    }
+ }
 
 
 }
@@ -3445,60 +2957,130 @@ private fun ModernMenuRow(
 private fun MenuRow(
 
 
-    icon     : String,
+ icon : String,
 
 
-    label    : String,
+ label : String,
 
 
-    sublabel : String?,
+ sublabel : String?,
 
 
-    tint     : Color,
+ tint : Color,
 
 
-    onClick  : () -> Unit
+ onClick : () -> Unit
 
 
 ) {
 
 
-    Row(
+ Row(
 
 
-        Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 20.dp, vertical = 14.dp),
+ Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 20.dp, vertical = 14.dp),
 
 
-        verticalAlignment = Alignment.CenterVertically,
+ verticalAlignment = Alignment.CenterVertically,
 
 
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
+ horizontalArrangement = Arrangement.spacedBy(14.dp)
 
 
-    ) {
+ ) {
 
 
-        Text(icon, fontSize = 18.sp, color = tint)
+ Text(icon, fontSize = 18.sp, color = tint)
 
 
-        Column(Modifier.weight(1f)) {
+ Column(Modifier.weight(1f)) {
 
 
-            Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = HPrimary)
+ Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = HPrimary)
 
 
-            if (sublabel != null) Text(sublabel, fontSize = 11.sp, color = HSecondary)
+ if (sublabel != null) Text(sublabel, fontSize = 11.sp, color = HSecondary)
 
 
-        }
+ }
 
 
-        Text("\u203A", fontSize = 18.sp, color = HMuted)
+ Text("\u203A", fontSize = 18.sp, color = HMuted)
 
 
-    }
+ }
 
 
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Voice Rooms Banner — floating pill on Tab 0 (Feed)
+// ─────────────────────────────────────────────────────────────────────────────
 
+@Composable
+private fun VoiceRoomsBanner(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val inf = rememberInfiniteTransition(label = "vrb")
+    val pulse by inf.animateFloat(
+        initialValue = 0.5f,
+        targetValue  = 1f,
+        animationSpec = infiniteRepeatable(tween(900), RepeatMode.Reverse),
+        label = "vrbp",
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(
+                Brush.horizontalGradient(
+                    listOf(Color(0xFF4C1D95), Color(0xFF6D28D9), Color(0xFF7C3AED))
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.horizontalGradient(
+                    listOf(Color(0xFF8B5CF6).copy(0.6f), Color(0xFFA78BFA).copy(0.3f))
+                ),
+                shape = RoundedCornerShape(20.dp),
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment          = Alignment.CenterVertically,
+            horizontalArrangement      = Arrangement.SpaceBetween,
+        ) {
+            Row(
+                verticalAlignment      = Alignment.CenterVertically,
+                horizontalArrangement  = Arrangement.spacedBy(10.dp),
+            ) {
+                // Live dot
+                Box(
+                    Modifier.size(8.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(Color(0xFF34D399).copy(pulse))
+                )
+                Column {
+                    Text(
+                        "🎙️ Voice Rooms",
+                        fontSize   = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color      = Color.White,
+                    )
+                    Text(
+                        "Speak freely · up to 25 min",
+                        fontSize = 11.sp,
+                        color    = Color(0xFFDDD6FE),
+                    )
+                }
+            }
+            Text(
+                "Join →",
+                fontSize   = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color      = Color(0xFFA78BFA),
+            )
+        }
+    }
+}

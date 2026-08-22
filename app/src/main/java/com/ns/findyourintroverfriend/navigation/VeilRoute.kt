@@ -71,4 +71,25 @@ object VeilRoute {
 
     // ── Invite Friends ─────────────────────────────────────────────────────────
     const val INVITE_FRIENDS = "invite_friends"
+
+    // ── Draw & Guess ──────────────────────────────────────────────────────────
+    const val DRAW_GUESS_WAITING     = "draw_guess_waiting/{roomId}/{matchId}"
+    const val DRAW_GUESS_MATCH_FOUND = "draw_guess_match_found/{roomId}/{matchId}"
+    const val DRAW_GUESS_GAME        = "draw_guess_game/{roomId}/{matchId}"
+    const val DRAW_GUESS_RESULT      = "draw_guess_result/{roomId}/{matchId}"
+    const val DRAW_GUESS_PUBLIC      = "draw_guess_public"
+    fun drawGuessWaiting(roomId: String, matchId: String)    = "draw_guess_waiting/$roomId/$matchId"
+    fun drawGuessMatchFound(roomId: String, matchId: String) = "draw_guess_match_found/$roomId/$matchId"
+    fun drawGuessGame(roomId: String, matchId: String)       = "draw_guess_game/$roomId/$matchId"
+    fun drawGuessResult(roomId: String, matchId: String)     = "draw_guess_result/$roomId/$matchId"
+
+    // ── Voice Rooms (LiveKit) ───────────────────────────────────────────────────
+    const val VOICE_ROOM_LOBBY  = "voice_room_lobby"
+    const val VOICE_ROOM_ACTIVE = "voice_room_active/{roomId}"
+    fun voiceRoomActive(roomId: String) = "voice_room_active/$roomId"
+
+    // ── Group Chat ───────────────────────────────────────────────────────────────
+    const val GROUP_ROOMS     = "group_rooms"
+    const val GROUP_CHAT_ROOM = "group_chat_room/{roomId}"
+    fun groupChatRoom(roomId: String) = "group_chat_room/$roomId"
 }

@@ -114,12 +114,16 @@ data class SwipeMatch(
 
 // ── Message inside Connection Room ────────────────────────────────────────────
 data class SwipeMessage(
-    val messageId  : String  = "",
-    val senderUid  : String  = "",
-    val senderAlias: String  = "",
-    val text       : String  = "",
-    val sentAt     : Long    = 0L,
-    val isSticker  : Boolean = false   // true when text is "sticker_pack1_N"
+    val messageId   : String  = "",
+    val senderUid   : String  = "",
+    val senderAlias : String  = "",
+    val text        : String  = "",
+    val sentAt      : Long    = 0L,
+    val isSticker   : Boolean = false,   // true when text is "sticker_pack1_N"
+    val imageUrl    : String  = "",      // non-empty for image messages
+    val replyToMsgId: String  = "",      // id of quoted message
+    val replyToText : String  = "",      // snippet of quoted text (or "[Image]")
+    val replyToAlias: String  = ""       // alias of quoted sender
 )
 
 // ── Compliment received ───────────────────────────────────────────────────────

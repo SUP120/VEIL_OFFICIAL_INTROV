@@ -375,6 +375,33 @@ service cloud.firestore {
       }
     }
 
+    // ── Friend / Connect Requests ──────────────────────────────────────────────
+    //  Sender creates a request (fromUid must be their own uid).
+    //  Both sender and recipient can read (sender sees sent, recipient sees inbox).
+    //  Only the recipient can update status (accept / decline).
+    //  Either party can delete (sender withdraws, recipient dismisses after deciding).
+    match /friendApproaches/{docId} {
+      // Sender writes their own request
+      allow create: if request.auth != null
+                 && request.resource.data.fromUid == request.auth.uid;
+
+      // Sender reads their outgoing requests; recipient reads their incoming
+      allow read: if request.auth != null
+               && (resource.data.fromUid == request.auth.uid
+                || resource.data.toUid   == request.auth.uid);
+
+      // Recipient accepts / declines — may only change status field
+      allow update: if request.auth != null
+                 && resource.data.toUid == request.auth.uid
+                 && request.resource.data.diff(resource.data).affectedKeys()
+                    .hasOnly(['status', 'respondedAt']);
+
+      // Either party can delete (sender withdraws, recipient dismisses)
+      allow delete: if request.auth != null
+                 && (resource.data.fromUid == request.auth.uid
+                  || resource.data.toUid   == request.auth.uid);
+    }
+
     // ── Veil Admin Reports ─────────────────────────────────────────────────────
     // Written by any authenticated user (post & chat reports).
     // Read is intentionally blocked for normal users — admin uses Firebase Console.
@@ -384,6 +411,103 @@ service cloud.firestore {
                  && request.resource.data.reportedBy == request.auth.uid;
       allow read:   if false;   // Admin reads directly in Firebase Console
       allow update, delete: if false;
+    }
+
+    // ── Draw & Guess Rooms ────────────────────────────────────────────────────
+    //
+    //  Collection: drawGuessRooms/{roomId}
+    //  Sub-collections:
+    //    strokes/{strokeId}  — real-time drawing data
+    //    chat/{messageId}    — lobby chat & guesses (both players)
+    //
+    match /drawGuessRooms/{roomId} {
+
+      // Room doc reads — public rooms visible to all; private only to participants
+      allow read: if request.auth != null
+               && (resource.data.inviteType == "public"
+                || resource.data.hostUid    == request.auth.uid
+                || resource.data.guestUid   == request.auth.uid);
+
+      // Room creation — creator becomes host
+      allow create: if request.auth != null
+                 && request.resource.data.hostUid == request.auth.uid;
+
+      // Room updates — host, guest, or anyone joining an open public slot
+      allow update: if request.auth != null
+                 && (resource.data.hostUid  == request.auth.uid
+                  || resource.data.guestUid == request.auth.uid
+                  || (resource.data.inviteType == "public"
+                   && resource.data.guestUid   == ""));
+
+      // Only host may delete the room
+      allow delete: if request.auth != null
+                 && resource.data.hostUid == request.auth.uid;
+
+      // ── Strokes sub-collection ─────────────────────────────────────────────
+      match /strokes/{strokeId} {
+        allow read, create, delete: if request.auth != null
+                 && (get(/databases/$(database)/documents/drawGuessRooms/$(roomId)).data.hostUid  == request.auth.uid
+                  || get(/databases/$(database)/documents/drawGuessRooms/$(roomId)).data.guestUid == request.auth.uid);
+        allow update: if false;
+      }
+
+      // ── Chat sub-collection ────────────────────────────────────────────────
+      // ⚠ Do NOT use get(roomDoc) here — it causes optimistic-write rollbacks
+      //   that make messages disappear. Only verify the sender's own uid.
+      match /chat/{messageId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+                   && request.resource.data.uid == request.auth.uid;
+        allow update, delete: if false;
+      }
+    }
+
+    // ── Veil Sparks (Questions Feed) ─────────────────────────────────────────
+    //
+    //  Collection: veilSparks/{sparkId}
+    //  Sub-collections:
+    //    answers/{answerId}             — answers with Reddit-style net score
+    //    answers/{answerId}/votes/{uid} — per-user vote record
+    //    resonators/{uid}              — users who resonated with the spark
+    //
+    match /veilSparks/{sparkId} {
+      // Anyone signed-in can read sparks
+      allow read: if request.auth != null;
+
+      // Creator must stamp their own authorId
+      allow create: if request.auth != null
+                 && request.resource.data.authorId == request.auth.uid;
+
+      // Any signed-in user can bump resonanceCount / answerCount (no impersonation risk)
+      allow update: if request.auth != null;
+
+      // Only author can delete their own spark
+      allow delete: if request.auth != null
+                 && resource.data.authorId == request.auth.uid;
+
+      // ── Answers ────────────────────────────────────────────────────────────
+      match /answers/{answerId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+                   && request.resource.data.authorId == request.auth.uid;
+        // Any auth user can update score (voting) — value validated client-side
+        allow update: if request.auth != null;
+        allow delete: if request.auth != null
+                   && resource.data.authorId == request.auth.uid;
+
+        // Per-user vote doc
+        match /votes/{userId} {
+          allow read, write: if request.auth != null
+                          && request.auth.uid == userId;
+        }
+      }
+
+      // ── Resonators ─────────────────────────────────────────────────────────
+      match /resonators/{userId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null
+                  && request.auth.uid == userId;
+      }
     }
 
   }

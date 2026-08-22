@@ -6,6 +6,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Alignment
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -49,6 +54,16 @@ import com.ns.findyourintroverfriend.feed.FeedUserProfileScreen
 import com.ns.findyourintroverfriend.listening.ListeningRoomScreen
 import com.ns.findyourintroverfriend.listening.ListeningLobbyScreen
 import com.ns.findyourintroverfriend.invite.InviteFriendsScreen
+import com.ns.findyourintroverfriend.game.drawguess.DrawGuessWaitingRoom
+import com.ns.findyourintroverfriend.game.drawguess.DrawGuessGameScreen
+import com.ns.findyourintroverfriend.game.drawguess.DrawGuessResultScreen
+import com.ns.findyourintroverfriend.game.drawguess.DrawGuessPublicLobby
+import com.ns.findyourintroverfriend.game.drawguess.DrawGuessMatchFoundScreen
+import com.ns.findyourintroverfriend.voiceroom.VoiceRoomLobbyScreen
+import com.ns.findyourintroverfriend.voiceroom.VoiceRoomActiveScreen
+import com.ns.findyourintroverfriend.voiceroom.VoiceRoomViewModel
+import com.ns.findyourintroverfriend.groupchat.GroupRoomsScreen
+import com.ns.findyourintroverfriend.groupchat.GroupChatRoomScreen
 
 
 @Composable
@@ -253,8 +268,17 @@ fun VeilNavGraph(navController: NavHostController, startDestination: String) {
                 onOpenListeningRoom = {
                     navController.navigate(VeilRoute.LISTENING_LOBBY)
                 },
+                onOpenVoiceRooms = {
+                    navController.navigate(VeilRoute.VOICE_ROOM_LOBBY)
+                },
+                onOpenGroups = {
+                    navController.navigate(VeilRoute.GROUP_ROOMS)
+                },
                 onOpenInvite = {
                     navController.navigate(VeilRoute.INVITE_FRIENDS)
+                },
+                onNavigateDrawGuess = {
+                    navController.navigate(VeilRoute.DRAW_GUESS_PUBLIC)
                 },
                 onLogout = {
                     com.ns.findyourintroverfriend.notifications.VeilNotifier.unregisterUser()
@@ -552,6 +576,12 @@ fun VeilNavGraph(navController: NavHostController, startDestination: String) {
                 onBack   = { navController.popBackStack() },
                 onOpenListeningRoom = { mId, _ ->
                     navController.navigate(VeilRoute.LISTENING_LOBBY)
+                },
+                onNavigateDrawGuess = { roomId ->
+                    navController.navigate(VeilRoute.drawGuessWaiting(roomId, matchId))
+                },
+                onNavigateVoiceRoom = { roomId ->
+                    navController.navigate(VeilRoute.voiceRoomActive(roomId))
                 }
             )
         }
@@ -587,7 +617,185 @@ fun VeilNavGraph(navController: NavHostController, startDestination: String) {
                 onBack = { navController.popBackStack() }
             )
         }
+
+        // ── Draw & Guess Public Lobby ─────────────────────────────────────────
+        composable(VeilRoute.DRAW_GUESS_PUBLIC) {
+            DrawGuessPublicLobby(
+                onBack = { navController.popBackStack() },
+                onEnterRoom = { roomId ->
+                    navController.navigate(VeilRoute.drawGuessWaiting(roomId, "public")) {
+                        popUpTo(VeilRoute.DRAW_GUESS_PUBLIC) { inclusive = false }
+                    }
+                }
+            )
+        }
+
+        // ── Draw & Guess Waiting Room ─────────────────────────────────────────
+        composable(
+            route     = VeilRoute.DRAW_GUESS_WAITING,
+            arguments = listOf(
+                navArgument("roomId")  { type = NavType.StringType },
+                navArgument("matchId") { type = NavType.StringType }
+            )
+        ) { back ->
+            val roomId  = back.arguments?.getString("roomId")  ?: ""
+            val matchId = back.arguments?.getString("matchId") ?: "public"
+            DrawGuessWaitingRoom(
+                roomId      = roomId,
+                matchId     = matchId,
+                onBack      = { navController.popBackStack() },
+                onGameStart = { rId, mId ->
+                    navController.navigate(VeilRoute.drawGuessMatchFound(rId, mId)) {
+                        popUpTo(VeilRoute.drawGuessWaiting(rId, mId)) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        // ── Draw & Guess Match Found Screen ────────────────────────────────
+        composable(
+            route     = VeilRoute.DRAW_GUESS_MATCH_FOUND,
+            arguments = listOf(
+                navArgument("roomId")  { type = NavType.StringType },
+                navArgument("matchId") { type = NavType.StringType }
+            )
+        ) { back ->
+            val roomId  = back.arguments?.getString("roomId")  ?: ""
+            val matchId = back.arguments?.getString("matchId") ?: "public"
+            // We need room data for this screen — share VM with game screen
+            val vm: com.ns.findyourintroverfriend.game.drawguess.DrawGuessViewModel =
+                androidx.lifecycle.viewmodel.compose.viewModel()
+            val state by vm.state.collectAsStateWithLifecycle()
+            androidx.compose.runtime.LaunchedEffect(roomId) {
+                if (state.myUid.isEmpty()) vm.init(roomId)
+            }
+            val room = state.room
+            if (room != null) {
+                DrawGuessMatchFoundScreen(
+                    hostUid    = room.hostUid,
+                    hostAlias  = room.hostAlias,
+                    guestUid   = room.guestUid,
+                    guestAlias = room.guestAlias,
+                    category   = room.category,
+                    onReady    = {
+                        navController.navigate(VeilRoute.drawGuessGame(roomId, matchId)) {
+                            popUpTo(VeilRoute.drawGuessMatchFound(roomId, matchId)) { inclusive = true }
+                        }
+                    }
+                )
+            } else {
+                Box(
+                    modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator()
+                }
+            }
+        }
+
+        // ── Draw & Guess Game Screen ──────────────────────────────────────────
+        composable(
+            route     = VeilRoute.DRAW_GUESS_GAME,
+            arguments = listOf(
+                navArgument("roomId")  { type = NavType.StringType },
+                navArgument("matchId") { type = NavType.StringType }
+            )
+        ) { back ->
+            val roomId  = back.arguments?.getString("roomId")  ?: ""
+            val matchId = back.arguments?.getString("matchId") ?: "public"
+            DrawGuessGameScreen(
+                roomId   = roomId,
+                matchId  = matchId,
+                onBack   = { navController.popBackStack() },
+                onGameEnd = { rId, mId ->
+                    navController.navigate(VeilRoute.drawGuessResult(rId, mId)) {
+                        popUpTo(VeilRoute.drawGuessGame(rId, mId)) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        // ── Draw & Guess Result Screen ────────────────────────────────────────
+        composable(
+            route     = VeilRoute.DRAW_GUESS_RESULT,
+            arguments = listOf(
+                navArgument("roomId")  { type = NavType.StringType },
+                navArgument("matchId") { type = NavType.StringType }
+            )
+        ) { back ->
+            val roomId  = back.arguments?.getString("roomId")  ?: ""
+            val matchId = back.arguments?.getString("matchId") ?: "public"
+            DrawGuessResultScreen(
+                roomId      = roomId,
+                matchId     = matchId,
+                onBack      = {
+                    if (matchId == "public") {
+                        navController.navigate(VeilRoute.DRAW_GUESS_PUBLIC) {
+                            popUpTo(VeilRoute.DRAW_GUESS_PUBLIC) { inclusive = false }
+                        }
+                    } else navController.popBackStack()
+                },
+                onPlayAgain = { rId, mId ->
+                    navController.navigate(VeilRoute.drawGuessWaiting(rId, mId)) {
+                        popUpTo(VeilRoute.drawGuessResult(rId, mId)) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        // ── Voice Room Lobby ──────────────────────────────────────────────────
+        composable(VeilRoute.VOICE_ROOM_LOBBY) {
+            val vm: VoiceRoomViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+            VoiceRoomLobbyScreen(
+                vm          = vm,
+                onBack      = { navController.popBackStack() },
+                onEnterRoom = { roomId ->
+                    navController.navigate(VeilRoute.voiceRoomActive(roomId)) {
+                        popUpTo(VeilRoute.VOICE_ROOM_LOBBY) { inclusive = false }
+                    }
+                }
+            )
+        }
+
+        // ── Voice Room Active ─────────────────────────────────────────────────
+        composable(
+            route     = VeilRoute.VOICE_ROOM_ACTIVE,
+            arguments = listOf(navArgument("roomId") { type = NavType.StringType })
+        ) { back ->
+            val roomId = back.arguments?.getString("roomId") ?: ""
+            val vm: VoiceRoomViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
+            VoiceRoomActiveScreen(
+                roomId = roomId,
+                vm     = vm,
+                onBack = {
+                    navController.navigate(VeilRoute.VOICE_ROOM_LOBBY) {
+                        popUpTo(VeilRoute.VOICE_ROOM_LOBBY) { inclusive = false }
+                    }
+                },
+            )
+        }
+
+        // ── Group Rooms list ───────────────────────────────────────────────────
+        composable(VeilRoute.GROUP_ROOMS) {
+            GroupRoomsScreen(
+                onBack     = { navController.popBackStack() },
+                onOpenRoom = { roomId ->
+                    navController.navigate(VeilRoute.groupChatRoom(roomId))
+                }
+            )
+        }
+
+        // ── Group Chat Room ──────────────────────────────────────────────────
+        composable(
+            route     = VeilRoute.GROUP_CHAT_ROOM,
+            arguments = listOf(navArgument("roomId") { type = NavType.StringType })
+        ) { back ->
+            val roomId = back.arguments?.getString("roomId") ?: ""
+            GroupChatRoomScreen(
+                roomId        = roomId,
+                onBack        = { navController.popBackStack() },
+                onOpenProfile = { uid -> navController.navigate("user_profile/$uid") }
+            )
+        }
     }
 }
-
-

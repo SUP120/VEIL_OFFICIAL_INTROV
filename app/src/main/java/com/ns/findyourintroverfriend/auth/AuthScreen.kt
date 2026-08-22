@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.ns.findyourintroverfriend.auth
 
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -6,6 +8,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -84,6 +87,18 @@ fun AuthScreen(
 
     val isLoading = uiState is AuthUiState.Loading
     val error     = (uiState as? AuthUiState.Error)?.message
+
+    // Reviewer bypass dialog state
+    var showReviewerDialog by remember { mutableStateOf(false) }
+    if (showReviewerDialog) {
+        ReviewerLoginDialog(
+            onDismiss = { showReviewerDialog = false },
+            onSubmit  = { email, pass ->
+                showReviewerDialog = false
+                viewModel.signInWithEmail(email, pass)
+            }
+        )
+    }
 
     Surface(color = ABg, modifier = Modifier.fillMaxSize()) {
         Column(
@@ -176,7 +191,8 @@ fun AuthScreen(
                     launcher.launch(gsc.signInIntent)
                 }
 
-                LegalText()
+                // Long press "Terms & Privacy Policy" to reveal hidden reviewer login
+                LegalText(onLongPressTerms = { showReviewerDialog = true })
             }
         }
     }
@@ -287,7 +303,7 @@ private fun GoogleSignInButton(isLoading: Boolean, onClick: () -> Unit) {
 //  Legal text
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
-private fun LegalText() {
+private fun LegalText(onLongPressTerms: () -> Unit = {}) {
     val ctx = LocalContext.current
     val legal = buildAnnotatedString {
         withStyle(SpanStyle(color = ATextHint, fontSize = 11.sp)) {
@@ -305,17 +321,25 @@ private fun LegalText() {
             append("  ·  18+ only")
         }
     }
-    ClickableText(
-        text     = legal,
-        style    = TextStyle(textAlign = TextAlign.Center, lineHeight = 16.sp),
-        modifier = Modifier.fillMaxWidth(),
-        onClick  = { offset ->
-            legal.getStringAnnotations("URL", offset, offset).firstOrNull()?.let {
-                android.content.Intent(android.content.Intent.ACTION_VIEW,
-                    android.net.Uri.parse(it.item)).also { i -> ctx.startActivity(i) }
-            }
-        }
-    )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick     = {
+                    legal.getStringAnnotations("URL", 0, legal.length).firstOrNull()?.let {
+                        android.content.Intent(android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse(it.item)).also { i -> ctx.startActivity(i) }
+                    }
+                },
+                onLongClick = onLongPressTerms
+            )
+    ) {
+        Text(
+            text     = legal,
+            style    = TextStyle(textAlign = TextAlign.Center, lineHeight = 16.sp),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -387,4 +411,92 @@ private fun LiveWhisper() {
             maxLines  = 1
         )
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Reviewer Login Dialog — hidden, triggered only by long-pressing Terms text
+//  Credentials provided in Play Console App Access section only.
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun ReviewerLoginDialog(
+    onDismiss: () -> Unit,
+    onSubmit : (email: String, password: String) -> Unit
+) {
+    var email    by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor   = ABg,
+        shape            = RoundedCornerShape(16.dp),
+        title = {
+            Text(
+                "Review Access",
+                fontSize   = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color      = AText
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Email field
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Email", fontSize = 12.sp, color = ATextSub)
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(AInput)
+                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                    ) {
+                        if (email.isEmpty()) Text("reviewer@example.com", fontSize = 14.sp, color = ATextHint)
+                        androidx.compose.foundation.text.BasicTextField(
+                            value         = email,
+                            onValueChange = { email = it },
+                            singleLine    = true,
+                            textStyle     = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = AText),
+                            modifier      = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+                // Password field
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Password", fontSize = 12.sp, color = ATextSub)
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(AInput)
+                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                    ) {
+                        if (password.isEmpty()) Text("••••••••", fontSize = 14.sp, color = ATextHint)
+                        androidx.compose.foundation.text.BasicTextField(
+                            value         = password,
+                            onValueChange = { password = it },
+                            singleLine    = true,
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            textStyle     = androidx.compose.ui.text.TextStyle(fontSize = 14.sp, color = AText),
+                            modifier      = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick  = { if (email.isNotBlank() && password.isNotBlank()) onSubmit(email.trim(), password) },
+                enabled  = email.isNotBlank() && password.isNotBlank(),
+                shape    = RoundedCornerShape(10.dp),
+                colors   = ButtonDefaults.buttonColors(containerColor = ABtnBg),
+                elevation = ButtonDefaults.buttonElevation(0.dp)
+            ) {
+                Text("Sign In", color = ABtnText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = ATextSub, fontSize = 14.sp)
+            }
+        }
+    )
 }

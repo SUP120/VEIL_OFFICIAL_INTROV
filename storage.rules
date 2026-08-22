@@ -12,14 +12,43 @@ service firebase.storage {
                    && request.resource.contentType.matches('image/.*');
     }
 
-    // ── Post images — users write to their own subfolder ─────────────────────
-    // Path: post_images/{uid}/{imageId}.jpg
+    // ── Post images (Introvert Feed / Sparks) — users write to their own folder
+    // Path: post_images/{uid}/{imageId}
     match /post_images/{uid}/{imageId} {
       allow read:  if request.auth != null;
       allow write: if request.auth != null
                    && request.auth.uid == uid
-                   && request.resource.size < 10 * 1024 * 1024 // max 10 MB
+                   && request.resource.size < 10 * 1024 * 1024  // max 10 MB
                    && request.resource.contentType.matches('image/.*');
+    }
+
+    // ── DM chat images (ConnectionRoom / Swipe matches) ───────────────────────
+    // Path: matches/{matchId}/images/{fileName}
+    // Any authenticated user can upload/read images within a match folder.
+    // (Fine-grained match membership checks would require a Firestore read,
+    //  which is not supported in Storage rules — trust the client-side quota.)
+    match /matches/{matchId}/images/{fileName} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    // ── Group / Slow-Chat images ──────────────────────────────────────────────
+    // Path: groups/{groupId}/images/{fileName}
+    match /groups/{groupId}/images/{fileName} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 10 * 1024 * 1024
+                   && request.resource.contentType.matches('image/.*');
+    }
+
+    // ── Voice room recordings (future) ────────────────────────────────────────
+    // Path: voice_rooms/{roomId}/{fileName}
+    match /voice_rooms/{roomId}/{fileName} {
+      allow read:  if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 50 * 1024 * 1024; // max 50 MB
     }
 
     // Block everything else

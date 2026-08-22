@@ -210,7 +210,10 @@ object VeilBillingClient {
             .build()
 
         val result = suspendCancellableCoroutine<Pair<BillingResult, List<ProductDetails>>> { cont ->
-            client.queryProductDetailsAsync(params) { r, list -> cont.resume(r to list) }
+            client.queryProductDetailsAsync(params) { r, queryResult ->
+                // billing-ktx 8.0.0+: second param is QueryProductDetailsResult, not List<ProductDetails>
+                cont.resume(r to queryResult.productDetailsList)
+            }
         }
 
         if (result.first.responseCode == BillingClient.BillingResponseCode.OK) {

@@ -210,6 +210,8 @@ class FeedViewModel : ViewModel() {
     fun refresh() {
         viewModelScope.launch {
             _isRefreshing.value = true
+            // Rotate salt → completely new ordering every pull-to-refresh
+            com.ns.findyourintroverfriend.util.FeedRanker.newSession()
             lastDoc = null
             _hasMore.value = true
             try {

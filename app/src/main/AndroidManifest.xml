@@ -15,6 +15,19 @@
     <uses-permission android:name="com.android.vending.BILLING" />
     <!-- Voice notes — microphone access for MediaRecorder -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Voice Rooms (LiveKit) — audio output + Bluetooth headset support -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!--
+        LiveKit SDK injects FOREGROUND_SERVICE_MEDIA_PROJECTION for its optional
+        screen-share feature. Veil only uses voice rooms (no screen capture), so
+        we strip this permission from the merged manifest to keep the permission
+        scope minimal and avoid Play Console warnings.
+    -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
+        tools:node="remove" />
 
     <application
         android:name=".VeilApplication"
@@ -65,6 +78,15 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <!-- Direct-reply receiver for DM notifications (WhatsApp-style inline reply) -->
+        <receiver
+            android:name=".notifications.NotificationReplyReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.ns.findyourintroverfriend.ACTION_DM_REPLY" />
+            </intent-filter>
+        </receiver>
 
         <!-- ML Kit: download face detection model at install time -->
         <!-- Without this, the model downloads lazily on first use and may not be ready -->

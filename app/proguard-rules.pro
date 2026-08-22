@@ -92,3 +92,11 @@
     java.lang.Object writeReplace();
     java.lang.Object readResolve();
 }
+
+# ── Agora RTC SDK — Voice Rooms ──────────────────────────────────────────────
+# Agora uses JNI callbacks and reflection internally.
+# Without these rules, release builds will silently fail to join channels.
+-keep class io.agora.** { *; }
+-keep interface io.agora.** { *; }
+-keepclassmembers class io.agora.** { *; }
+-dontwarn io.agora.**

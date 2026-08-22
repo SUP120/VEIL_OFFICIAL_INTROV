@@ -23,22 +23,33 @@ import androidx.compose.ui.text.style.*
 import androidx.compose.ui.unit.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ns.findyourintroverfriend.util.LocalVeilIsDark
+import com.ns.findyourintroverfriend.util.VeilThemeManager
+import com.ns.findyourintroverfriend.voiceroom.VoiceRoomViewModel
 
-// ── App palette ───────────────────────────────────────────────────────────────
-private val HBg         = Color(0xFFF7F5F0)
-private val HCard       = Color(0xFFFFFFFF)
-private val HBorder     = Color(0xFFEDE8DF)
-private val HAccent     = Color(0xFF7C6AE8)
-private val HAccentSoft = Color(0xFFEFEBFF)
-private val HGold       = Color(0xFFE89820)
-private val HGoldSoft   = Color(0xFFFFF3DC)
-private val HPrimary    = Color(0xFF1C1916)
-private val HSub        = Color(0xFF8A8480)
-private val HMuted      = Color(0xFFBBB5AC)
-private val HGreen      = Color(0xFF2E9E6A)
-private val HGreenSoft  = Color(0xFFE6F5EE)
-private val HRed        = Color(0xFFD94F4F)
-private val HPill       = Color(0xFFF0EBE3)
+// -- Dark-mode state ---------------------------------------------------------
+private var _gameDark by mutableStateOf(VeilThemeManager.initialResolvedDark)
+
+// ── Design tokens (theme-aware) ────────────────────────────────────────────────
+// Peaceful Serenity — matching FeedScreen & SwipeScreen palette
+private val HBg         get() = if (_gameDark) Color(0xFF0F0F14) else Color(0xFFFBF8F4)   // warm parchment
+private val HCard       get() = if (_gameDark) Color(0xFF17171E) else Color(0xFFFFFFFF)   // card surface
+private val HBorder     get() = if (_gameDark) Color(0xFF2C2C34) else Color(0xFFE8E3DC)   // soft border
+private val HAccent            = Color(0xFFA07C8C)   // dusty mauve
+private val HAccentSoft get() = if (_gameDark) Color(0xFF251520) else Color(0xFFF7EFF3)   // soft mauve tint
+private val HGold              = Color(0xFFBFA882)   // warm sand
+private val HGoldSoft   get() = if (_gameDark) Color(0xFF1A1610) else Color(0xFFF7F3EC)
+private val HPrimary    get() = if (_gameDark) Color(0xFFE0DDD8) else Color(0xFF2C2825)   // warm near-black
+private val HSub        get() = if (_gameDark) Color(0xFF918E8A) else Color(0xFF7A7470)   // warm stone
+private val HMuted      get() = if (_gameDark) Color(0xFF5A5855) else Color(0xFFC4BFBA)   // muted warm
+// Sage green for Whisper (voice/live)
+private val HGreen             = Color(0xFF7A9E87)   // sage green
+private val HGreenSoft  get() = if (_gameDark) Color(0xFF0E1E13) else Color(0xFFEFF5F1)
+// Dusty blue for Groups (text/chat)
+private val HBlue              = Color(0xFF7B9AC4)   // dusty blue
+private val HBlueSoft   get() = if (_gameDark) Color(0xFF101825) else Color(0xFFECF1F8)
+private val HRed               = Color(0xFFBF6B6B)   // muted terracotta
+private val HPill       get() = if (_gameDark) Color(0xFF1C1C23) else Color(0xFFF4F0EB)
 
 // ── Game catalogue (add new games here in future) ─────────────────────────────
 data class GameDef(
@@ -57,41 +68,51 @@ val GAME_CATALOGUE = listOf(
         id          = "guess_country",
         title       = "Guess The Country",
         description = "Emoji clues → hint → first to pick wins the round!",
-        emoji       = "🌍",
+        emoji       = "guess_country",
         players     = "2 Players",
         duration    = "5–10 rounds",
         available   = true,
-        accentColor = Color(0xFF7C6AE8)
+        accentColor = Color(0xFFA07C8C)   // dusty mauve
+    ),
+    GameDef(
+        id          = "draw_guess",
+        title       = "Draw & Guess",
+        description = "One draws, one guesses — race the clock in real time!",
+        emoji       = "draw_guess",
+        players     = "2 Players",
+        duration    = "5–10 rounds",
+        available   = true,
+        accentColor = Color(0xFF7B9AC4)   // dusty blue
     ),
     GameDef(
         id          = "movie_quiz",
         title       = "Movie Quiz",
-        description = "Guess the movie from emoji scenes — coming soon!",
-        emoji       = "🎬",
+        description = "Guess the movie from scenes — coming soon!",
+        emoji       = "movie_quiz",
         players     = "2 Players",
         duration    = "5–10 rounds",
         available   = false,
-        accentColor = Color(0xFFD94F4F)
+        accentColor = Color(0xFFBF6B6B)   // muted terracotta
     ),
     GameDef(
         id          = "music_guess",
         title       = "Guess The Song",
-        description = "Emoji lyrics clues — guess faster than your opponent!",
-        emoji       = "🎵",
+        description = "Lyric clues — guess faster than your opponent!",
+        emoji       = "music_guess",
         players     = "2 Players",
         duration    = "5–10 rounds",
         available   = false,
-        accentColor = Color(0xFF2E9E6A)
+        accentColor = Color(0xFF7A9E87)   // sage green
     ),
     GameDef(
         id          = "flag_game",
         title       = "Flag Frenzy",
         description = "Recognize the flag in seconds — speed matters!",
-        emoji       = "🚩",
+        emoji       = "flag_game",
         players     = "2 Players",
         duration    = "5–10 rounds",
         available   = false,
-        accentColor = Color(0xFFE89820)
+        accentColor = Color(0xFFBFA882)   // warm sand
     ),
 )
 
@@ -102,16 +123,35 @@ data class CategoryDef(
     val subtitle    : String,
     val emoji       : String,
     val available   : Boolean = true,
+    val isNew       : Boolean = false,
     val accentColor : Color   = Color(0xFF7C6AE8)
 )
 
 val CATEGORIES = listOf(
     CategoryDef(
+        id          = "whisper",
+        title       = "Whisper",
+        subtitle    = "Live voice rooms for introverts",
+        emoji       = "🪧",
+        available   = true,
+        isNew       = true,
+        accentColor = Color(0xFF0ABFB8)
+    ),
+    CategoryDef(
+        id          = "groups",
+        title       = "Groups",
+        subtitle    = "Open chat rooms for everyone",
+        emoji       = "💬",
+        available   = true,
+        isNew       = true,
+        accentColor = Color(0xFF4A8FBF)
+    ),
+    CategoryDef(
         id          = "games",
         title       = "Games",
         subtitle    = "Quiz games, emoji challenges & more",
         emoji       = "🎮",
-        available   = true,
+        available   = false,
         accentColor = Color(0xFF7C6AE8)
     ),
     CategoryDef(
@@ -142,9 +182,18 @@ val CATEGORIES = listOf(
 
 // ── Root composable ───────────────────────────────────────────────────────────
 @Composable
-fun GameLobbyScreen(vm: GameRoomViewModel = viewModel()) {
+fun GameLobbyScreen(
+    vm                   : GameRoomViewModel = viewModel(),
+    onNavigateDrawGuess  : () -> Unit = {},
+    onOpenVoiceRooms     : () -> Unit = {},
+    onOpenGroups         : () -> Unit = {},
+) {
     val state by vm.state.collectAsStateWithLifecycle()
     val room  = state.currentRoom
+
+    // Sync theme
+    val _veilIsDark = LocalVeilIsDark.current
+    SideEffect { _gameDark = _veilIsDark }
 
     // Local nav state: which category / game is open
     var selectedCategory by remember { mutableStateOf("") }
@@ -163,6 +212,12 @@ fun GameLobbyScreen(vm: GameRoomViewModel = viewModel()) {
     if (state.selectedGameType.isNotEmpty()) {
         val gameDef = GAME_CATALOGUE.find { it.id == state.selectedGameType }
         if (gameDef != null) {
+            // Draw & Guess uses its own nav flow — route to public lobby
+            if (gameDef.id == "draw_guess") {
+                vm.setSelectedGame("")
+                onNavigateDrawGuess()
+                return
+            }
             GameRoomLobby(
                 vm      = vm,
                 state   = state,
@@ -171,6 +226,20 @@ fun GameLobbyScreen(vm: GameRoomViewModel = viewModel()) {
             )
             return
         }
+    }
+
+    // Whisper — navigate directly to voice room lobby
+    if (selectedCategory == "whisper") {
+        selectedCategory = ""
+        onOpenVoiceRooms()
+        return
+    }
+
+    // Groups — navigate to group rooms list
+    if (selectedCategory == "groups") {
+        selectedCategory = ""
+        onOpenGroups()
+        return
     }
 
     // Music Room
@@ -185,8 +254,12 @@ fun GameLobbyScreen(vm: GameRoomViewModel = viewModel()) {
     if (selectedCategory == "games") {
         GameHub(
             onSelectGame = { gameId ->
-                vm.setSelectedGame(gameId)
-                vm.listenToRooms(gameId)
+                if (gameId == "draw_guess") {
+                    onNavigateDrawGuess()
+                } else {
+                    vm.setSelectedGame(gameId)
+                    vm.listenToRooms(gameId)
+                }
             },
             onBack = { selectedCategory = "" }
         )
@@ -194,103 +267,462 @@ fun GameLobbyScreen(vm: GameRoomViewModel = viewModel()) {
     }
 
     // Default: Categories screen
-    CategoriesScreen(onSelectCategory = { catId -> selectedCategory = catId })
+    CategoriesScreen(
+        onSelectCategory = { catId -> selectedCategory = catId },
+        onOpenVoiceRooms = onOpenVoiceRooms,
+    )
 }
 
-// ── Categories Screen ─────────────────────────────────────────────────────────
+// ── Explore (Categories) Screen ───────────────────────────────────────────────
 @Composable
-private fun CategoriesScreen(onSelectCategory: (String) -> Unit) {
-    Column(Modifier.fillMaxSize().background(HBg).systemBarsPadding()) {
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
-            Text("Explore", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = HPrimary)
-            Text("Choose a category to get started", fontSize = 12.sp, color = HSub)
+private fun CategoriesScreen(
+    onSelectCategory : (String) -> Unit,
+    onOpenVoiceRooms : () -> Unit = {},
+) {
+    val dark = _gameDark
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(HBg)
+            .systemBarsPadding()
+    ) {
+
+        // ── Calm gradient header ───────────────────────────────────────
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            if (dark) Color(0xFF17121A) else Color(0xFFF7EFF3),
+                            HBg
+                        )
+                    )
+                )
+                .padding(start = 22.dp, end = 22.dp, top = 24.dp, bottom = 20.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                // Tiny accent dot
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Box(
+                        Modifier.size(6.dp).clip(CircleShape)
+                            .background(HAccent.copy(0.6f))
+                    )
+                    Text(
+                        "EXPLORE",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = HAccent.copy(0.7f),
+                        letterSpacing = 1.8.sp
+                    )
+                }
+                Text(
+                    "Your quiet spaces",
+                    fontSize      = 26.sp,
+                    fontWeight    = FontWeight.Bold,
+                    color         = HPrimary,
+                    letterSpacing = (-0.5).sp
+                )
+                Text(
+                    "Rooms built for people who prefer depth over noise",
+                    fontSize = 13.sp,
+                    color    = HSub,
+                    lineHeight = 18.sp
+                )
+            }
         }
-        LazyColumn(
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+
+        // ── Main cards ───────────────────────────────────────────
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(CATEGORIES) { cat ->
-                CategoryCard(cat = cat, onClick = { if (cat.available) onSelectCategory(cat.id) })
+            // Section label
+            Text(
+                "LIVE SPACES",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = HMuted,
+                letterSpacing = 1.5.sp,
+                modifier = Modifier.padding(start = 2.dp, bottom = 2.dp)
+            )
+
+            WhisperCard(
+                dark    = dark,
+                onClick = { onSelectCategory("whisper") }
+            )
+
+            GroupsCard(
+                dark    = dark,
+                onClick = { onSelectCategory("groups") }
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            // ── Coming soon footer strip ───────────────────────
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(Modifier.weight(1f).height(0.5.dp).background(HBorder))
+                Text(
+                    "MORE COMING SOON",
+                    fontSize = 8.sp,
+                    color = HMuted,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 1.2.sp
+                )
+                Box(Modifier.weight(1f).height(0.5.dp).background(HBorder))
             }
-            item { Spacer(Modifier.height(24.dp)) }
+
+            // Teaser chips row
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    "Games" to Icons.Rounded.SportsEsports,
+                    "Music Room" to Icons.Rounded.MusicNote,
+                    "Art Room" to Icons.Rounded.Brush
+                ).forEach { (label, icon) ->
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(HPill)
+                            .border(0.5.dp, HBorder, RoundedCornerShape(20.dp))
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Icon(icon, null, tint = HMuted, modifier = Modifier.size(12.dp))
+                        Text(label, fontSize = 11.sp, color = HMuted, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
         }
     }
 }
-
+ // ── Whisper hero card ─────────────────────────────────────────────────────
 @Composable
-private fun CategoryCard(cat: CategoryDef, onClick: () -> Unit) {
-    // Duolingo-style shine sweep — white diagonal strip gliding left → right
-    val shimmerInf = rememberInfiniteTransition(label = "catShine_${cat.id}")
-    val shimmerX by shimmerInf.animateFloat(
-        initialValue = -500f,
-        targetValue  = 1200f,
-        animationSpec = infiniteRepeatable(
-            animation  = tween(1600, easing = LinearEasing, delayMillis = if (cat.id == "games") 0 else 500),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "shine_${cat.id}"
+private fun WhisperCard(
+    dark    : Boolean,
+    onClick : () -> Unit
+) {
+    val voiceVm: VoiceRoomViewModel = viewModel()
+    val lobbyState by voiceVm.lobbyState.collectAsStateWithLifecycle()
+    val liveRooms    = lobbyState.rooms
+    val totalPeople  = liveRooms.sumOf { it.participantCount }
+    val isLoading    = lobbyState.isLoading
+
+    // Animated live dot
+    val pulse = rememberInfiniteTransition(label = "wpulse")
+    val dotAlpha by pulse.animateFloat(
+        0.4f, 1f,
+        infiniteRepeatable(tween(800, easing = LinearEasing), RepeatMode.Reverse),
+        "wda"
     )
+
+    val liveText = when {
+        isLoading           -> "Checking activity…"
+        liveRooms.isEmpty() -> "No rooms live · Be the first"
+        liveRooms.size == 1 -> "1 room live · $totalPeople listening"
+        else                -> "${liveRooms.size} rooms live · $totalPeople listening"
+    }
+    val hasLive = liveRooms.isNotEmpty()
 
     Box(
         Modifier
             .fillMaxWidth()
-            .alpha(if (cat.available) 1f else 0.55f)
+            .shadow(4.dp, RoundedCornerShape(20.dp), spotColor = HGreen.copy(0.10f))
             .clip(RoundedCornerShape(20.dp))
             .background(HCard)
-            .border(1.dp, HBorder, RoundedCornerShape(20.dp))
-            .drawWithContent {
-                drawContent()
-                if (cat.id == "games" || cat.id == "music_room") {
-                    val brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color(0x007C6AE8),
-                            Color(0x457C6AE8),   // ~27% — clearly visible
-                            Color(0x007C6AE8)
-                        ),
-                        start = Offset(shimmerX, 0f),
-                        end   = Offset(shimmerX + 200f, size.height)
-                    )
-                    drawRect(brush = brush, size = size)
-                }
-            }
-            .clickable(enabled = cat.available, onClick = onClick)
+            .border(1.dp, if (hasLive) HGreen.copy(0.30f) else HBorder, RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
     ) {
-        Row(Modifier.fillMaxWidth().padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Box(Modifier.size(58.dp).clip(RoundedCornerShape(16.dp))
-                .background(cat.accentColor.copy(0.10f)),
-                contentAlignment = Alignment.Center) {
-                if (cat.id == "games") {
-                    Image(
-                        painter = androidx.compose.ui.res.painterResource(id = com.ns.findyourintroverfriend.R.drawable.games),
-                        contentDescription = "Games",
-                        modifier = Modifier.size(38.dp)
+        // Subtle sage tint wash when rooms are live
+        if (hasLive) {
+            Box(
+                Modifier.fillMaxSize()
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(
+                                HGreenSoft.copy(if (dark) 0.6f else 0.5f),
+                                HCard
+                            )
+                        )
                     )
-                } else {
-                    Text(cat.emoji, fontSize = 26.sp)
-                }
+            )
+        }
+
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 20.dp),
+            verticalAlignment   = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Icon circle
+            Box(
+                Modifier
+                    .size(52.dp)
+                    .shadow(3.dp, CircleShape, spotColor = HGreen.copy(0.15f))
+                    .clip(CircleShape)
+                    .background(HGreenSoft)
+                    .border(1.dp, HGreen.copy(0.25f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                // Use drawable if available, otherwise fallback to mic icon
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(
+                        com.ns.findyourintroverfriend.R.drawable.whispericon
+                    ),
+                    contentDescription = null,
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.size(36.dp)
+                )
             }
+
+            // Content
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(cat.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = HPrimary)
-                    if (!cat.available) {
-                        Box(Modifier.clip(RoundedCornerShape(6.dp)).background(HPill)
-                            .padding(horizontal = 6.dp, vertical = 2.dp)) {
-                            Text("Soon", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = HSub)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "Whisper",
+                        fontSize   = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color      = HPrimary
+                    )
+                    if (hasLive) {
+                        Box(
+                            Modifier
+                                .clip(RoundedCornerShape(5.dp))
+                                .background(HGreen.copy(0.15f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                "LIVE",
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = HGreen,
+                                letterSpacing = 0.8.sp
+                            )
                         }
                     }
                 }
-                Text(cat.subtitle, fontSize = 12.sp, color = HSub, lineHeight = 16.sp)
+                Text(
+                    "Live voice rooms · listen & speak quietly",
+                    fontSize = 12.sp,
+                    color    = HSub
+                )
+                // Live status row
+                Row(
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Box(
+                        Modifier.size(5.dp).clip(CircleShape)
+                            .background(
+                                if (hasLive) HGreen.copy(alpha = dotAlpha)
+                                else HMuted
+                            )
+                    )
+                    Text(
+                        liveText,
+                        fontSize = 11.sp,
+                        color    = if (hasLive) HGreen.copy(0.85f) else HMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
+
             Icon(
-                if (cat.available) Icons.Rounded.ChevronRight else Icons.Rounded.Lock,
-                null, tint = HMuted, modifier = Modifier.size(if (cat.available) 20.dp else 16.dp)
+                Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint     = HMuted,
+                modifier = Modifier.size(18.dp)
             )
         }
     }
 }
+// ── Groups hero card ──────────────────────────────────────────────────────────
+@Composable
+private fun GroupsCard(
+    dark    : Boolean,
+    onClick : () -> Unit
+) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .shadow(4.dp, RoundedCornerShape(20.dp), spotColor = HBlue.copy(0.10f))
+            .clip(RoundedCornerShape(20.dp))
+            .background(HCard)
+            .border(1.dp, HBorder, RoundedCornerShape(20.dp))
+            .clickable(onClick = onClick)
+    ) {
+        // Subtle dusty blue tint wash
+        Box(
+            Modifier.fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(
+                            HBlueSoft.copy(if (dark) 0.5f else 0.4f),
+                            HCard
+                        )
+                    )
+                )
+        )
+
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 20.dp),
+            verticalAlignment   = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Icon circle
+            Box(
+                Modifier
+                    .size(52.dp)
+                    .shadow(3.dp, CircleShape, spotColor = HBlue.copy(0.12f))
+                    .clip(CircleShape)
+                    .background(HBlueSoft)
+                    .border(1.dp, HBlue.copy(0.22f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.Forum,
+                    contentDescription = null,
+                    tint = HBlue,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            // Content
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    "Groups",
+                    fontSize   = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color      = HPrimary
+                )
+                Text(
+                    "Open chat rooms · create or join anytime",
+                    fontSize = 12.sp,
+                    color    = HSub
+                )
+                Row(
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Box(
+                        Modifier.size(5.dp).clip(CircleShape)
+                            .background(HBlue.copy(0.5f))
+                    )
+                    Text(
+                        "Public · anyone can join",
+                        fontSize = 11.sp,
+                        color    = HMuted
+                    )
+                }
+            }
+
+            Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint     = HMuted,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+
+// ── Coming-soon tile (half-width) ─────────────────────────────────────────────
+@Composable
+private fun SoonTile(
+    cat     : CategoryDef,
+    dark    : Boolean,
+    surface : Color,
+    border  : Color,
+    sub     : Color,
+    muted   : Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(if (dark) Color(0xFF151517) else Color(0xFFFAFAFA))
+            .border(1.dp, border, RoundedCornerShape(16.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // Icon + Soon pill row
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Box(
+                Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (dark) Color(0xFF222228) else Color(0xFFEEEEEE)),
+                contentAlignment = Alignment.Center
+            ) {
+                when (cat.id) {
+                    "games" -> androidx.compose.foundation.Image(
+                        painter            = androidx.compose.ui.res.painterResource(
+                            com.ns.findyourintroverfriend.R.drawable.games
+                        ),
+                        contentDescription = cat.title,
+                        modifier           = Modifier.size(20.dp)
+                    )
+                    else -> Text(cat.emoji, fontSize = 18.sp)
+                }
+            }
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(if (dark) Color(0xFF222228) else Color(0xFFEEEEEE))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    "Soon",
+                    fontSize   = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color      = muted
+                )
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                cat.title,
+                fontSize   = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color      = sub
+            )
+            Text(
+                cat.subtitle,
+                fontSize  = 10.sp,
+                color     = muted,
+                maxLines  = 2,
+                overflow  = TextOverflow.Ellipsis,
+                lineHeight = 14.sp
+            )
+        }
+    }
+}
+
 
 // ── Game Hub — grid of games inside Games category ────────────────────────────
 @Composable
@@ -341,7 +773,7 @@ private fun GameCard(game: GameDef, onClick: () -> Unit) {
                 drawContent()
                 if (game.available) {
                     val br = Brush.linearGradient(
-                        listOf(Color(0x007C6AE8), Color(0x407C6AE8), Color(0x007C6AE8)),
+                        listOf(Color(0x00A07C8C), Color(0x25A07C8C), Color(0x00A07C8C)),
                         Offset(shimX, 0f), Offset(shimX + 200f, size.height)
                     )
                     drawRect(brush = br)
@@ -357,12 +789,26 @@ private fun GameCard(game: GameDef, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Emoji icon
+            // Icon box — icon-based, no emoji
             Box(
                 Modifier.size(60.dp).clip(RoundedCornerShape(16.dp))
-                    .background(game.accentColor.copy(0.10f)),
+                    .background(game.accentColor.copy(0.12f))
+                    .border(1.dp, game.accentColor.copy(0.20f), RoundedCornerShape(16.dp)),
                 contentAlignment = Alignment.Center
-            ) { Text(game.emoji, fontSize = 28.sp) }
+            ) {
+                Icon(
+                    imageVector = when (game.id) {
+                        "draw_guess"   -> Icons.Rounded.Brush
+                        "music_guess"  -> Icons.Rounded.MusicNote
+                        "movie_quiz"   -> Icons.Rounded.Movie
+                        "flag_game"    -> Icons.Rounded.Flag
+                        else           -> Icons.Rounded.SportsEsports
+                    },
+                    contentDescription = null,
+                    tint     = game.accentColor,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
 
             // Info
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -377,9 +823,9 @@ private fun GameCard(game: GameDef, onClick: () -> Unit) {
                     }
                 }
                 Text(game.description, fontSize = 12.sp, color = HSub, lineHeight = 16.sp, maxLines = 2)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    GamePill("👥 ${game.players}")
-                    GamePill("⏱ ${game.duration}")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GamePill(Icons.Rounded.Group, game.players)
+                    GamePill(Icons.Rounded.Schedule, game.duration)
                 }
             }
 
@@ -406,10 +852,16 @@ private fun GameCard(game: GameDef, onClick: () -> Unit) {
 }
 
 @Composable
-private fun GamePill(text: String) {
-    Box(Modifier.clip(RoundedCornerShape(20.dp)).background(HPill)
-        .padding(horizontal = 8.dp, vertical = 3.dp)) {
-        Text(text, fontSize = 10.sp, color = HSub, fontWeight = FontWeight.Medium)
+private fun GamePill(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String) {
+    Row(
+        Modifier.clip(RoundedCornerShape(20.dp)).background(HPill)
+            .border(0.5.dp, HBorder, RoundedCornerShape(20.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(icon, null, tint = HMuted, modifier = Modifier.size(10.dp))
+        Text(label, fontSize = 10.sp, color = HSub, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -453,7 +905,13 @@ private fun GameRoomLobby(
             .border(1.dp, HBorder, RoundedCornerShape(14.dp)).padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(gameDef.emoji, fontSize = 28.sp)
+            Box(
+                Modifier.size(42.dp).clip(RoundedCornerShape(12.dp))
+                    .background(HAccentSoft),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Rounded.SportsEsports, null, tint = HAccent, modifier = Modifier.size(22.dp))
+            }
             Column(Modifier.weight(1f)) {
                 Text(gameDef.description, fontSize = 12.sp, color = HSub, lineHeight = 16.sp)
             }
@@ -468,7 +926,13 @@ private fun GameRoomLobby(
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(gameDef.emoji, fontSize = 48.sp)
+                    Box(
+                        Modifier.size(64.dp).clip(RoundedCornerShape(20.dp))
+                            .background(HAccentSoft),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Rounded.SportsEsports, null, tint = HAccent, modifier = Modifier.size(32.dp))
+                    }
                     Text("No rooms open", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = HPrimary)
                     Text("Create one and invite a friend!", fontSize = 13.sp, color = HSub)
                     Spacer(Modifier.height(4.dp))

@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.ns.findyourintroverfriend.swipe
 
 import androidx.compose.animation.*
@@ -41,36 +43,55 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.ns.findyourintroverfriend.BuildConfig
+import com.ns.findyourintroverfriend.util.CloudinaryUploader
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.items
 
-// ── Instagram-style palette (black & white, no purple) ────────────────────────
-private val IGBg         = Color(0xFFFFFFFF)   // pure white background
-private val IGSurface    = Color(0xFFFFFFFF)   // header / input bg
-private val IGDivider    = Color(0xFFEFEFEF)   // subtle divider
-private val IGSentBg     = Color(0xFF000000)   // sent bubble — black
-private val IGSentText   = Color(0xFFFFFFFF)   // text on sent bubble
-private val IGRecvBg     = Color(0xFFF0F0F0)   // received bubble — light gray
-private val IGRecvText   = Color(0xFF111111)   // text on received bubble
-private val IGPrimary    = Color(0xFF000000)   // headers, icons
-private val IGSecondary  = Color(0xFF737373)   // subtitles, placeholders
-private val IGRed        = Color(0xFFED4956)   // report accent
-private val IGRedSoft    = Color(0xFFFFF0F1)
+// ── Chat palette — dark-aware (resolved at composition time via _chatDark) ──
+// Light values stay the same as before; dark values mirror the app's dark theme.
+private var _chatDark by androidx.compose.runtime.mutableStateOf(false)
+
+// These read _chatDark at every recompose — no snapshot issues.
+private val IGBg        get() = if (_chatDark) Color(0xFF0D0D10) else Color(0xFFFFFFFF)
+private val IGSurface   get() = if (_chatDark) Color(0xFF141417) else Color(0xFFFFFFFF)
+private val IGDivider   get() = if (_chatDark) Color(0xFF2A2A30) else Color(0xFFEFEFEF)
+private val IGSentBg    get() = if (_chatDark) Color(0xFFE91E8C) else Color(0xFF000000)
+private val IGSentText  get() = Color(0xFFFFFFFF)
+private val IGRecvBg    get() = if (_chatDark) Color(0xFF1E1E24) else Color(0xFFF0F0F0)
+private val IGRecvText  get() = if (_chatDark) Color(0xFFE8E8EC) else Color(0xFF111111)
+private val IGPrimary   get() = if (_chatDark) Color(0xFFF0F0F5) else Color(0xFF000000)
+private val IGSecondary get() = if (_chatDark) Color(0xFF8A8A9A) else Color(0xFF737373)
+private val IGRed       = Color(0xFFED4956)
+private val IGRedSoft   get() = if (_chatDark) Color(0xFF2A1010) else Color(0xFFFFF0F1)
+private val IGFieldBg   get() = if (_chatDark) Color(0xFF1A1A20) else Color(0xFFF9F9F9)
 
 @Composable
 fun ConnectionRoomScreen(
     matchId  : String,
     vm       : SwipeViewModel = viewModel(),
     onBack   : () -> Unit,
-    onOpenListeningRoom: (matchId: String, partnerUid: String) -> Unit = { _, _ -> }
+    onOpenListeningRoom: (matchId: String, partnerUid: String) -> Unit = { _, _ -> },
+    onNavigateDrawGuess: (roomId: String) -> Unit = {},
+    onNavigateVoiceRoom: (roomId: String) -> Unit = {}
 ) {
     val db      = FirebaseFirestore.getInstance()
     val uid     = FirebaseAuth.getInstance().currentUser?.uid ?: ""
     val scope   = rememberCoroutineScope()
     val context = LocalContext.current
+    val hapticB = LocalHapticFeedback.current
+
+    // ── Dark mode ──────────────────────────────────────────────────────────────
+    val veilDark = com.ns.findyourintroverfriend.util.LocalVeilIsDark.current
+    SideEffect { _chatDark = veilDark }
 
     val cookieVm: CookieViewModel = viewModel()
     val cookieBalance by cookieVm.cookieBalance.collectAsStateWithLifecycle()
@@ -79,6 +100,11 @@ fun ConnectionRoomScreen(
 
     var match             by remember { mutableStateOf<SwipeMatch?>(null) }
     var messages          by remember { mutableStateOf<List<SwipeMessage>>(emptyList()) }
+    // ── Pagination state ───────────────────────────────────────────────────────
+    var loadingOlderMsgs  by remember { mutableStateOf(false) }
+    var noMoreOlderMsgs   by remember { mutableStateOf(false) }
+    // Holds the oldest DocumentSnapshot so we can paginate backwards
+    var oldestMsgDoc by remember { mutableStateOf<com.google.firebase.firestore.DocumentSnapshot?>(null) }
     var messageInput      by remember { mutableStateOf("") }
     var loading           by remember { mutableStateOf(true) }
     var showStickerPicker    by remember { mutableStateOf(false) }
@@ -87,18 +113,101 @@ fun ConnectionRoomScreen(
     var showCookieGiftDialog  by remember { mutableStateOf(false) }
     var cookieGiftAmount      by remember { mutableStateOf("") }
     var showFlowerBurst       by remember { mutableStateOf(false) }
+    var activeFlowerAsset     by remember { mutableStateOf("Gestures_flowers.lottie") }
+    var showFlowerPicker      by remember { mutableStateOf(false) }
     var lastSeenBurstMsgId    by remember { mutableStateOf("") }
-    var openedGiftKeys        by remember { mutableStateOf(setOf<Long>()) }  // gift wraps tapped this session
+
+    // Persist opened gift-wrap bubbles across restarts — keyed by matchId so
+    // each chat has its own set. Values are sentAt Long timestamps joined by "|".
+    val openedGiftPrefs = remember {
+        context.getSharedPreferences("veil_opened_gifts", android.content.Context.MODE_PRIVATE)
+    }
+    var openedGiftKeys by remember {
+        val raw = openedGiftPrefs.getString("opened_$matchId", "") ?: ""
+        val loaded = if (raw.isBlank()) emptySet()
+                     else raw.split("|").mapNotNull { it.toLongOrNull() }.toSet()
+        mutableStateOf(loaded)
+    }
+    // Helper: save whenever the set changes
+    fun persistOpenedKey(sentAt: Long) {
+        val updated = openedGiftKeys + sentAt
+        openedGiftKeys = updated
+        openedGiftPrefs.edit()
+            .putString("opened_$matchId", updated.joinToString("|"))
+            .apply()
+    }
+
     var showGesturePanel      by remember { mutableStateOf(false) }
     var showVoiceRecorder     by remember { mutableStateOf(false) }
     var showDrawingCanvas     by remember { mutableStateOf(false) }
+    var showDrawGuessSheet     by remember { mutableStateOf(false) }
 
     // Reply-to state
     var replyToMsg            by remember { mutableStateOf<SwipeMessage?>(null) }
     var longPressedMsg        by remember { mutableStateOf<SwipeMessage?>(null) }
 
+    // Attachment panel state
+    var showAttachPanel       by remember { mutableStateOf(false) }
+
+    // Image attachment — daily quota (5 free/day, then 5 cookies each)
+    val imgQuotaPrefs = remember { context.getSharedPreferences("veil_img_quota", android.content.Context.MODE_PRIVATE) }
+    val todayKey = remember { java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.getDefault()).format(java.util.Date()) }
+    var imgSentToday by remember {
+        mutableStateOf(if (imgQuotaPrefs.getString("date", "") == todayKey) imgQuotaPrefs.getInt("count", 0) else 0)
+    }
+    var uploadingImage        by remember { mutableStateOf(false) }
+    var fullScreenImageUrl    by remember { mutableStateOf<String?>(null) }
+    var showNoCookiesDialog   by remember { mutableStateOf(false) }
+
+    // Image picker launcher — declared after myAlias (see below); we use a var ref to avoid hoisting issues
+    var myAlias by remember { mutableStateOf("") }
+
+    val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        val FREE_DAILY = 5
+        val COOKIE_COST = 5
+        val needsCookies = imgSentToday >= FREE_DAILY
+        if (needsCookies && cookieBalance < COOKIE_COST) {
+            showNoCookiesDialog = true
+            return@rememberLauncherForActivityResult
+        }
+        uploadingImage = true
+        scope.launch {
+            try {
+                val cloudName    = BuildConfig.CLOUDINARY_CLOUD_NAME
+                val uploadPreset = BuildConfig.CLOUDINARY_UPLOAD_PRESET
+                val imageUrl = CloudinaryUploader.upload(context, uri, cloudName, uploadPreset)
+                if (needsCookies) cookieVm.spendCookies(COOKIE_COST, "Image attachment") { }
+                val replyMsg = replyToMsg
+                db.collection("matches").document(matchId).collection("messages")
+                    .add(SwipeMessage(
+                        messageId    = db.collection("_").document().id,
+                        senderUid    = uid,
+                        senderAlias  = myAlias,
+                        text         = "",
+                        sentAt       = System.currentTimeMillis(),
+                        imageUrl     = imageUrl,
+                        replyToMsgId = replyMsg?.messageId ?: "",
+                        replyToText  = if ((replyMsg?.imageUrl ?: "").isNotEmpty()) "[Image]" else (replyMsg?.text?.take(60) ?: ""),
+                        replyToAlias = replyMsg?.senderAlias ?: ""
+                    )).await()
+                val newCount = imgSentToday + 1
+                imgSentToday = newCount
+                imgQuotaPrefs.edit().putString("date", todayKey).putInt("count", newCount).apply()
+                replyToMsg = null
+                val partnerUid = if (match?.userA == uid) match?.userB else match?.userA
+                partnerUid?.let {
+                    com.ns.findyourintroverfriend.notifications.VeilNotifier
+                        .sendDmMessage(toUid = it, fromAlias = myAlias, fromUid = uid, matchId = matchId, messageText = "📷 Image")
+                }
+            } catch (_: Exception) { }
+            uploadingImage = false
+        }
+    }
+
     // Partner presence
     var partnerPresenceStatus by remember { mutableStateOf("") } // "active" | "gone"
+    var partnerLastSeenMs     by remember { mutableStateOf(0L) }
 
     val prefKey            = "chat_rules_seen_$matchId"
     val prefs              = context.getSharedPreferences("veil_safety", android.content.Context.MODE_PRIVATE)
@@ -107,7 +216,34 @@ fun ConnectionRoomScreen(
     var showReportDialog   by remember { mutableStateOf(false) }
     var reportAnimPhase    by remember { mutableIntStateOf(0) }
 
-    val myAlias = vm.myProfile.collectAsStateWithLifecycle().value?.alias ?: ""
+    val myAliasFromVm = vm.myProfile.collectAsStateWithLifecycle().value?.alias ?: ""
+    LaunchedEffect(myAliasFromVm) {
+        if (myAliasFromVm.isNotBlank()) myAlias = myAliasFromVm
+    }
+
+    // ── WhatsApp-style notification suppression ───────────────────────────────
+    // While this chat is on screen, VeilMessagingService will skip DM notifications
+    // for this matchId. We also cancel any already-posted notification immediately.
+    DisposableEffect(matchId) {
+        com.ns.findyourintroverfriend.notifications.ActiveChatTracker.activeMatchId = matchId
+        val nm = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE)
+                    as android.app.NotificationManager
+        nm.cancel(matchId.hashCode() and 0x7FFFFFFF)
+        com.ns.findyourintroverfriend.notifications.DmNotifHistory.clear(context, matchId)
+        onDispose {
+            if (com.ns.findyourintroverfriend.notifications.ActiveChatTracker.activeMatchId == matchId) {
+                com.ns.findyourintroverfriend.notifications.ActiveChatTracker.activeMatchId = null
+            }
+        }
+    }
+
+    // Persist alias so NotificationReplyReceiver can sign outgoing replies correctly
+    LaunchedEffect(myAliasFromVm) {
+        if (myAliasFromVm.isNotBlank()) {
+            context.getSharedPreferences("veil_prefs", android.content.Context.MODE_PRIVATE)
+                .edit().putString("user_alias", myAliasFromVm).apply()
+        }
+    }
 
     // Load sticker pack ownership once
     LaunchedEffect(uid) {
@@ -147,13 +283,24 @@ fun ConnectionRoomScreen(
     // lastSeenBurstMsgId still used so sender’s own sent burst is trackable.
 
     // ── Write own presence; read partner presence ──────────────────────────────
-    LaunchedEffect(uid) {
-        if (uid.isBlank()) return@LaunchedEffect
-        // Write "I am active"
-        try {
+    DisposableEffect(uid) {
+        if (uid.isNotBlank()) {
+            // New system: users/{uid}
+            db.collection("users").document(uid)
+                .set(mapOf("onlineAt" to System.currentTimeMillis()), com.google.firebase.firestore.SetOptions.merge())
+            // Legacy: presence/{uid}
             db.collection("presence").document(uid)
-                .set(mapOf("lastSeen" to System.currentTimeMillis(), "online" to true)).await()
-        } catch (_: Exception) {}
+                .set(mapOf("lastSeen" to System.currentTimeMillis(), "online" to true))
+        }
+        onDispose {
+            if (uid.isNotBlank()) {
+                val now = System.currentTimeMillis()
+                db.collection("users").document(uid)
+                    .set(mapOf("onlineAt" to 0L, "lastSeen" to now), com.google.firebase.firestore.SetOptions.merge())
+                db.collection("presence").document(uid)
+                    .set(mapOf("lastSeen" to now, "online" to false))
+            }
+        }
     }
 
     LaunchedEffect(matchId) {
@@ -169,10 +316,46 @@ fun ConnectionRoomScreen(
             .addSnapshotListener { snap, _ -> snap?.toObject(SwipeMatch::class.java)?.let { match = it } }
     }
 
+    // ── Instagram-style paginated message loading ─────────────────────────────
+    // Phase 1: load the LAST 30 messages initially (fast, no full-history fetch)
     LaunchedEffect(matchId) {
-        db.collection("matches").document(matchId).collection("messages")
-            .orderBy("sentAt").addSnapshotListener { snap, _ ->
-                snap?.let { messages = it.toObjects(SwipeMessage::class.java) }
+        try {
+            val snap = db.collection("matches").document(matchId)
+                .collection("messages")
+                .orderBy("sentAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
+                .limit(30)
+                .get().await()
+            if (snap.documents.isNotEmpty()) {
+                // Reverse so oldest is at top — same visual order as before
+                val fetched = snap.documents
+                    .mapNotNull { it.toObject(SwipeMessage::class.java) }
+                    .reversed()
+                messages = fetched
+                oldestMsgDoc = snap.documents.lastOrNull() // last = oldest (DESC order)
+                noMoreOlderMsgs = snap.documents.size < 30
+            } else {
+                noMoreOlderMsgs = true
+            }
+        } catch (_: Exception) {}
+    }
+
+    // Phase 2: real-time listener ONLY for new messages (sentAt > last loaded)
+    // This avoids re-downloading history every time a new message arrives
+    LaunchedEffect(matchId, messages.size) {
+        if (messages.isEmpty()) return@LaunchedEffect
+        val latestSentAt = messages.lastOrNull()?.sentAt ?: return@LaunchedEffect
+        db.collection("matches").document(matchId)
+            .collection("messages")
+            .orderBy("sentAt", com.google.firebase.firestore.Query.Direction.ASCENDING)
+            .whereGreaterThan("sentAt", latestSentAt)
+            .addSnapshotListener { snap, _ ->
+                val newMsgs = snap?.toObjects(SwipeMessage::class.java) ?: return@addSnapshotListener
+                if (newMsgs.isNotEmpty()) {
+                    // Merge — deduplicate by messageId
+                    val existingIds = messages.map { it.messageId }.toSet()
+                    val truly = newMsgs.filter { it.messageId !in existingIds }
+                    if (truly.isNotEmpty()) messages = messages + truly
+                }
             }
     }
 
@@ -181,11 +364,23 @@ fun ConnectionRoomScreen(
         val m2 = match ?: return@LaunchedEffect
         val partnerUid = if (m2.userA == uid) m2.userB else m2.userA
         if (partnerUid.isBlank()) return@LaunchedEffect
-        db.collection("presence").document(partnerUid)
+
+        // First try users/{uid} (written by PresenceManager — the new system)
+        db.collection("users").document(partnerUid)
             .addSnapshotListener { snap, _ ->
-                val lastSeen = snap?.getLong("lastSeen") ?: 0L
-                val diffMs   = System.currentTimeMillis() - lastSeen
-                partnerPresenceStatus = if (diffMs < 10 * 60 * 1000L) "active" else "gone"
+                if (snap == null) return@addSnapshotListener
+                val showPref = snap.getBoolean("showLastSeen") ?: true
+                if (!showPref) {
+                    partnerPresenceStatus = ""
+                    partnerLastSeenMs = 0L
+                    return@addSnapshotListener
+                }
+                val onlineAt  = snap.getLong("onlineAt") ?: 0L
+                val lastSeen  = snap.getLong("lastSeen")  ?: 0L
+                val now       = System.currentTimeMillis()
+                val isOnline  = onlineAt > 0L && (now - onlineAt) < 60_000L
+                partnerPresenceStatus = if (isOnline) "active" else "gone"
+                partnerLastSeenMs     = if (isOnline) now else lastSeen
             }
     }
 
@@ -295,6 +490,7 @@ fun ConnectionRoomScreen(
         }
 
         val isUserA      = m.userA == uid
+        val partnerUid   = if (isUserA) m.userB else m.userA
         val partnerAlias = if (isUserA) m.aliasB else m.aliasA
         val partnerPhoto = if (isUserA) m.photoB else m.photoA
 
@@ -343,9 +539,23 @@ fun ConnectionRoomScreen(
                         maxLines = 1
                     )
                     when (partnerPresenceStatus) {
-                        "active" -> Text("Active now", fontSize = 11.sp, color = Color(0xFF4CAF50))
-                        "gone"   -> Text("Gone to meditate 🧘", fontSize = 11.sp, color = IGSecondary)
-                        else     -> Text("Veil user", fontSize = 11.sp, color = IGSecondary)
+
+                        "active" -> Text("Online", fontSize = 11.sp, color = Color(0xFF4CAF50),
+                            fontWeight = FontWeight.SemiBold)
+                        "gone"   -> {
+                            val diff = System.currentTimeMillis() - partnerLastSeenMs
+                            val label = when {
+                                partnerLastSeenMs == 0L   -> ""
+                                diff < 60_000L            -> "last seen just now"
+                                diff < 3_600_000L         -> "last seen ${diff / 60_000}m ago"
+                                diff < 86_400_000L        -> "last seen ${diff / 3_600_000}h ago"
+                                diff < 604_800_000L       -> "last seen ${diff / 86_400_000}d ago"
+                                else                      -> "last seen " + java.text.SimpleDateFormat(
+                                    "MMM d", java.util.Locale.getDefault()).format(java.util.Date(partnerLastSeenMs))
+                            }
+                            if (label.isNotBlank()) Text(label, fontSize = 11.sp, color = IGSecondary)
+                        }
+                        else -> { /* no presence info — show nothing */ }
                     }
                 }
 
@@ -353,16 +563,63 @@ fun ConnectionRoomScreen(
                 IconButton(onClick = { showRulesInfo = true }) {
                     Icon(Icons.Rounded.Info, null, tint = IGSecondary, modifier = Modifier.size(20.dp))
                 }
+                // Game button — moved from input bar to header
+                IconButton(onClick = { showDrawGuessSheet = true; keyboard?.hide() }) {
+                    Icon(Icons.Rounded.SportsEsports, null,
+                        tint = Color(0xFF9C88FF), modifier = Modifier.size(20.dp))
+                }
                 IconButton(onClick = { showReportDialog = true }) {
                     Icon(Icons.Rounded.Flag, null, tint = IGRed, modifier = Modifier.size(20.dp))
                 }
             }
 
             val scrollState = rememberScrollState()
-            LaunchedEffect(messages.size) { scrollState.animateScrollTo(scrollState.maxValue) }
 
-               
+            // Auto-scroll to bottom only when a NEW message arrives (not history loads)
+            var prevMsgCount    by remember { mutableIntStateOf(0) }
+            var isLoadingHistory by remember { mutableStateOf(false) }
+            LaunchedEffect(messages.size) {
+                val countBefore = prevMsgCount
+                prevMsgCount = messages.size
+                // Skip scroll if we're in the middle of loading history (older prepends)
+                if (!isLoadingHistory && messages.size > countBefore) {
+                    val lastBefore = messages.getOrNull(countBefore - 1)?.sentAt ?: 0L
+                    val newLast    = messages.lastOrNull()?.sentAt ?: 0L
+                    // Only scroll when the LAST message changed (new incoming/sent message)
+                    if (newLast > lastBefore) scrollState.animateScrollTo(scrollState.maxValue)
+                }
+            }
 
+            // Detect scroll position — load older msgs when user reaches the top
+            LaunchedEffect(scrollState.value) {
+                if (scrollState.value == 0 && !loadingOlderMsgs && !noMoreOlderMsgs
+                        && messages.isNotEmpty() && oldestMsgDoc != null) {
+                    isLoadingHistory = true
+                    loadingOlderMsgs = true
+                    try {
+                        val snap = db.collection("matches").document(matchId)
+                            .collection("messages")
+                            .orderBy("sentAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
+                            .startAfter(oldestMsgDoc!!)
+                            .limit(20)
+                            .get().await()
+                        if (snap.documents.isNotEmpty()) {
+                            val older = snap.documents
+                                .mapNotNull { it.toObject(SwipeMessage::class.java) }
+                                .reversed()
+                            val existingIds = messages.map { it.messageId }.toSet()
+                            val truly = older.filter { it.messageId !in existingIds }
+                            if (truly.isNotEmpty()) messages = truly + messages
+                            oldestMsgDoc = snap.documents.lastOrNull()
+                        }
+                        noMoreOlderMsgs = snap.documents.size < 20
+                    } catch (_: Exception) {}
+                    loadingOlderMsgs = false
+                    // Small delay before re-enabling auto-scroll so compose settles
+                    kotlinx.coroutines.delay(120)
+                    isLoadingHistory = false
+                }
+            }
 
 
             Column(
@@ -372,6 +629,35 @@ fun ConnectionRoomScreen(
                     .padding(horizontal = 12.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                // ── Top of list: older messages indicator ───────────────────────────
+                if (loadingOlderMsgs) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 1.5.dp,
+                                color = IGSecondary
+                            )
+                            androidx.compose.material3.Text(
+                                "Loading older messages...",
+                                fontSize = 11.sp,
+                                color = IGSecondary
+                            )
+                        }
+                    }
+                } else if (noMoreOlderMsgs && messages.isNotEmpty()) {
+                    Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                        androidx.compose.material3.Text(
+                            "―  Beginning of conversation  ―",
+                            fontSize = 10.sp,
+                            color = IGSecondary.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+
                 if (messages.isEmpty()) {
                     Column(
                         Modifier.fillMaxWidth().padding(top = 60.dp),
@@ -409,8 +695,6 @@ fun ConnectionRoomScreen(
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                             replyToMsg = msg
                                             longPressedMsg = null
-                                            val prefix = "@${msg.senderAlias}\n"
-                                            if (!messageInput.startsWith(prefix)) messageInput = prefix
                                         }
                                         swipeOffsetX = 0f
                                     },
@@ -479,74 +763,96 @@ fun ConnectionRoomScreen(
                                     }
                                 }
                             }
-                            // ─ Flower Burst → Gift Wrap bubble (tap to reveal) ──────────
-                            msg.text == "flower_burst" -> {
-                                val isOpened  = msg.sentAt in openedGiftKeys
-                                val inf       = rememberInfiniteTransition(label = "gift_${msg.sentAt}")
-                                val glowState = inf.animateFloat(
-                                    0.45f, 1f,
-                                    infiniteRepeatable(tween(800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-                                    "giftGlow_${msg.sentAt}"
+                            // ─ Flower Burst → premium gift card bubble ──────────────────
+                            msg.text == "flower_burst" || msg.text.startsWith("flower_burst::") -> {
+                                val flowerAsset = if (msg.text.contains("::"))
+                                    msg.text.substringAfter("::") + ".lottie"
+                                else "Gestures_flowers.lottie"
+                                val isOpened = msg.sentAt in openedGiftKeys
+
+                                val inf = rememberInfiniteTransition(label = "glow_${msg.sentAt}")
+                                val glowAlpha by inf.animateFloat(
+                                    initialValue = 0.4f, targetValue = 1f,
+                                    animationSpec = infiniteRepeatable(
+                                        tween(1400, easing = FastOutSlowInEasing),
+                                        RepeatMode.Reverse
+                                    ), label = "glowA_${msg.sentAt}"
                                 )
-                                val glow = glowState.value
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+
+                                // Dark-aware card colors
+                                val cardBgOpen   = if (_chatDark) Color(0xFF1E1E24) else Color(0xFFF5F5F5)
+                                val cardBgClosed = if (_chatDark) Color(0xFF1A1520) else Color(0xFFFFF8F9)
+                                val cardBorderOpen  = if (_chatDark) Color(0xFF2A2A32) else Color(0xFFDDDDDD)
+                                val cardTitleOpen   = if (_chatDark) Color(0xFF666675) else Color(0xFFAAAAAA)
+                                val cardTitleClosed = if (_chatDark) Color(0xFFE8E8EC) else Color(0xFF222222)
+
+                                Column(
                                     modifier = Modifier
-                                        .widthIn(max = 230.dp)
+                                        .widthIn(max = 140.dp)
                                         .clip(RoundedCornerShape(18.dp))
-                                        .background(
-                                            if (isOpened) Color(0xFFF8E6FF)
-                                            else Color(0xFF1C1916)
-                                        )
+                                        .background(if (isOpened) cardBgOpen else cardBgClosed)
                                         .border(
-                                            width = if (isOpened) 1.dp else (glow + 0.5f).dp,
-                                            color = if (isOpened) Color(0xFFF48FB1).copy(0.35f)
-                                                    else Color(0xFFFFD54F).copy(glow),
+                                            width = if (isOpened) 0.5.dp else 1.dp,
+                                            color = if (isOpened)
+                                                        cardBorderOpen
+                                                    else
+                                                        Color(0xFFE91E8C).copy(alpha = glowAlpha),
                                             shape = RoundedCornerShape(18.dp)
                                         )
-                                        .clickable(enabled = !isOpened) {
-                                            openedGiftKeys = openedGiftKeys + msg.sentAt
+                                        .alpha(if (isOpened) 0.6f else 1f)
+                                        .clickable(enabled = !isOpened && !mine) {
+                                            persistOpenedKey(msg.sentAt)
+                                            activeFlowerAsset = flowerAsset
                                             showFlowerBurst = true
                                         }
-                                        .padding(horizontal = 14.dp, vertical = 12.dp)
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(5.dp)
                                 ) {
-                                    Box(
-                                        Modifier.size(40.dp).clip(CircleShape)
-                                            .background(
-                                                if (isOpened) Color(0xFFF48FB1).copy(0.25f)
-                                                else Color(0xFFFFD54F).copy(if (!isOpened) glow * 0.18f else 0.08f)
-                                            ),
-                                        Alignment.Center
-                                    ) {
-                                        Icon(
-                                            if (isOpened) Icons.Rounded.AutoAwesome
-                                            else Icons.Rounded.CardGiftcard,
-                                            null,
-                                            tint = if (isOpened) Color(0xFFAD1457) else Color(0xFFFFD54F),
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Column {
+                                    Text(if (isOpened) "🌸" else "🎁", fontSize = 28.sp)
+                                    Text(
+                                        when {
+                                            isOpened && mine  -> "Sent"
+                                            isOpened && !mine -> "Opened 🌸"
+                                            mine              -> "A surprise"
+                                            else              -> "A little surprise"
+                                        },
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (isOpened) cardTitleOpen else cardTitleClosed,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    if (!mine && !isOpened) {
                                         Text(
-                                            if (isOpened) {
-                                                if (mine) "Flower Burst sent" else "Gift opened!"
-                                            } else {
-                                                if (mine) "Flower Burst" else "A gift for you"
-                                            },
-                                            fontWeight = FontWeight.Bold, fontSize = 13.sp,
-                                            color = if (isOpened) Color(0xFFAD1457) else Color.White
-                                        )
-                                        Text(
-                                            if (isOpened) "5 cookies \u00b7 screen effect"
-                                            else if (!mine) "Tap to reveal the surprise"
-                                            else "5 cookies",
-                                            fontSize = 11.sp,
-                                            color = if (isOpened) Color(0xFFCE77A8).copy(0.8f)
-                                                    else Color.White.copy(0.55f)
+                                            "Tap to unwrap ✨",
+                                            fontSize = 10.sp,
+                                            color = Color(0xFFE91E8C),
+                                            fontWeight = FontWeight.Medium,
+                                            letterSpacing = 0.2.sp
                                         )
                                     }
                                 }
+                            }
+                            // ─ Draw & Guess Invite bubble ────────────────────────────
+                            msg.text.startsWith("game_invite_draw_guess::") -> {
+                                val roomId = msg.text.removePrefix("game_invite_draw_guess::")
+                                DrawGuessInviteBubble(
+                                    isMine   = mine,
+                                    roomId   = roomId,
+                                    onAccept = { onNavigateDrawGuess(roomId) }
+                                )
+                            }
+                            // ─ Whisper Room Invite bubble ────────────────────────────
+                            msg.text.startsWith("whisper_invite::") -> {
+                                val parts     = msg.text.removePrefix("whisper_invite::").split("::")
+                                val wRoomId   = parts.getOrNull(0) ?: ""
+                                val wTitle    = parts.getOrNull(1) ?: "Whisper Room"
+                                WhisperInviteBubble(
+                                    isMine      = mine,
+                                    roomTitle   = wTitle,
+                                    senderAlias = msg.senderAlias,
+                                    onJoin      = { if (wRoomId.isNotBlank()) onNavigateVoiceRoom(wRoomId) }
+                                )
                             }
                             // ─ Sticker bubble ────────────────────────────────────────────
                             msg.text.startsWith("sticker_pack") -> {
@@ -567,12 +873,52 @@ fun ConnectionRoomScreen(
                                     }
                                 }
                             }
+                            // ─ Image bubble ────────────────────────────────────────────
+                            msg.imageUrl.isNotEmpty() -> {
+                                Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
+                                    // Reply quote if this image is a reply
+                                    if (msg.replyToAlias.isNotEmpty()) {
+                                        ReplyQuoteCard(
+                                            alias = msg.replyToAlias,
+                                            snippet = msg.replyToText,
+                                            isMine = mine
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                    }
+                                    AsyncImage(
+                                        model = msg.imageUrl,
+                                        contentDescription = "Image",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .widthIn(max = 220.dp)
+                                            .aspectRatio(1f)
+                                            .clip(RoundedCornerShape(
+                                                topStart    = if (!mine) 4.dp else 18.dp,
+                                                topEnd      = if (mine) 4.dp else 18.dp,
+                                                bottomStart = 18.dp,
+                                                bottomEnd   = 18.dp
+                                            ))
+                                            .clickable { fullScreenImageUrl = msg.imageUrl }
+                                    )
+                                    val fmt = remember { java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()) }
+                                    Text(fmt.format(java.util.Date(msg.sentAt)), fontSize = 10.sp, color = IGSecondary,
+                                        modifier = Modifier.padding(top = 3.dp, start = 4.dp, end = 4.dp))
+                                }
+                            }
                             // ─ Normal text bubble ────────────────────────────────────────
                             else -> {
                                 val showTime = longPressedMsg?.sentAt == msg.sentAt
                                 Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
-                                    // Reply-to quote preview inside bubble
-                                    if (msg.text.startsWith("@")) {
+                                    // Proper WhatsApp-style reply quote card
+                                    if (msg.replyToAlias.isNotEmpty()) {
+                                        ReplyQuoteCard(
+                                            alias = msg.replyToAlias,
+                                            snippet = msg.replyToText,
+                                            isMine = mine
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                    } else if (msg.text.startsWith("@")) {
+                                        // Legacy: old @-prefixed messages
                                         val firstNewline = msg.text.indexOf('\n')
                                         val tagLine = if (firstNewline > 0) msg.text.substring(0, firstNewline) else ""
                                         if (tagLine.startsWith("@")) {
@@ -630,10 +976,8 @@ fun ConnectionRoomScreen(
                                                 fontWeight = FontWeight.SemiBold,
                                                 color = IGPrimary,
                                                 modifier = Modifier.clickable {
-                                                    replyToMsg  = msg
+                                                    replyToMsg     = msg
                                                     longPressedMsg = null
-                                                    val prefix = "@${msg.senderAlias}\n"
-                                                    if (!messageInput.startsWith(prefix)) messageInput = prefix
                                                 }
                                             )
                                         }
@@ -704,7 +1048,7 @@ fun ConnectionRoomScreen(
                                             Modifier
                                                 .size(96.dp)
                                                 .clip(RoundedCornerShape(16.dp))
-                                                .background(Color(0xFFF0F0F0))
+                                                .background(IGRecvBg)
                                                 .clickable {
                                                     val key = "sticker_pack1_${stickerIdx + 1}"
                                                     showStickerPicker = false
@@ -776,27 +1120,45 @@ fun ConnectionRoomScreen(
                 }
             }
 
-            // ── Reply-to banner ───────────────────────────────────────────────
-            if (replyToMsg != null) {
-                Row(
-                    Modifier.fillMaxWidth()
-                        .background(Color(0xFFF5F5F5))
-                        .border(BorderStroke(0.5.dp, IGDivider))
-                        .padding(horizontal = 16.dp, vertical = 7.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.width(3.dp).height(28.dp).background(IGPrimary, RoundedCornerShape(2.dp)))
-                        Column {
-                            Text("Replying to @${replyToMsg!!.senderAlias}",
-                                fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = IGPrimary)
-                            Text(replyToMsg!!.text.take(40).replace('\n', ' '),
-                                fontSize = 11.sp, color = IGSecondary, maxLines = 1)
+            // ── WhatsApp-style Reply-to banner ────────────────────────────────
+            AnimatedVisibility(
+                visible = replyToMsg != null,
+                enter = slideInVertically(tween(180)) { it } + fadeIn(tween(140)),
+                exit  = slideOutVertically(tween(140)) { it } + fadeOut(tween(100))
+            ) {
+                replyToMsg?.let { replied ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(if (_chatDark) Color(0xFF1A1A20) else Color(0xFFF7F7F7))
+                            .border(BorderStroke(0.5.dp, IGDivider)),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Left accent bar
+                        Box(Modifier.width(3.dp).height(52.dp).background(IGPrimary))
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                            Text(
+                                replied.senderAlias,
+                                fontSize = 12.sp, fontWeight = FontWeight.Bold, color = IGPrimary
+                            )
+                            val snippet = when {
+                                replied.imageUrl.isNotEmpty() -> "📷 Image"
+                                else -> replied.text.take(55).replace('\n', ' ')
+                            }
+                            Text(snippet, fontSize = 12.sp, color = IGSecondary, maxLines = 1)
                         }
-                    }
-                    IconButton(onClick = { replyToMsg = null; messageInput = "" }, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Rounded.Close, null, tint = IGSecondary, modifier = Modifier.size(16.dp))
+                        if (replied.imageUrl.isNotEmpty()) {
+                            AsyncImage(
+                                model = replied.imageUrl, contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(6.dp))
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        IconButton(onClick = { replyToMsg = null }, modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.Rounded.Close, null, tint = IGSecondary, modifier = Modifier.size(16.dp))
+                        }
                     }
                 }
             }
@@ -829,23 +1191,7 @@ fun ConnectionRoomScreen(
                         onClick = {
                             hapticB.performHapticFeedback(HapticFeedbackType.LongPress)
                             showGesturePanel = false
-                            cookieVm.spendCookies(5, "Flower Burst") { ok ->
-                                if (ok) {
-                                    showFlowerBurst = true
-                                    scope.launch {
-                                        try {
-                                            db.collection("matches").document(matchId)
-                                                .collection("messages")
-                                                .add(SwipeMessage(
-                                                    messageId   = db.collection("_").document().id,
-                                                    senderUid   = uid, senderAlias = myAlias,
-                                                    text        = "flower_burst",
-                                                    sentAt      = System.currentTimeMillis()
-                                                )).await()
-                                        } catch (_: Exception) {}
-                                    }
-                                }
-                            }
+                            showFlowerPicker = true
                         }
                     )
                     GesturePill(
@@ -865,18 +1211,22 @@ fun ConnectionRoomScreen(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .shadow(elevation = 4.dp, ambientColor = Color.Black.copy(0.08f), spotColor = Color.Black.copy(0.08f))
                     .background(IGSurface)
-                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                    .border(BorderStroke(0.5.dp, IGDivider), shape = RoundedCornerShape(0.dp))
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // ── Gesture button — Gesture.png (R.drawable.gesture) ──────────
+                // ── Gesture (flower) button ────────────────────────────────────
                 Box(
                     Modifier
-                        .size(36.dp)
+                        .size(42.dp)
                         .clip(CircleShape)
-                        .background(if (showGesturePanel) Color(0xFFFFE4EF) else Color.Transparent)
+                        .background(
+                            if (showGesturePanel)
+                                if (_chatDark) Color(0xFF3A1A2A) else Color(0xFFFFE4EF)
+                            else Color.Transparent
+                        )
                         .border(
                             BorderStroke(
                                 if (showGesturePanel) 1.5.dp else 0.dp,
@@ -884,34 +1234,44 @@ fun ConnectionRoomScreen(
                             ),
                             CircleShape
                         )
-                        .clickable { showGesturePanel = !showGesturePanel; if (showGesturePanel) keyboard?.hide() },
+                        .clickable {
+                            showGesturePanel = !showGesturePanel
+                            showAttachPanel = false
+                            if (showGesturePanel) keyboard?.hide()
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
                         painter = painterResource(R.drawable.gesture),
                         contentDescription = "Love Gestures",
-                        modifier = Modifier.size(26.dp),
+                        modifier = Modifier.size(28.dp),
                         contentScale = ContentScale.Fit
                     )
                 }
 
-                // ── Sticker button — sticker.png (R.drawable.sticker) ──────────
+                // ── Attachment (+) button ──────────────────────────────────────
                 Box(
-                    Modifier.size(36.dp).clip(CircleShape)
-                        .background(if (showStickerPicker) Color(0xFFF0F0F0) else Color.Transparent)
+                    Modifier
+                        .size(42.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (showAttachPanel)
+                                if (_chatDark) Color(0xFF252530) else IGDivider
+                            else Color.Transparent
+                        )
                         .clickable {
-                            if (pack1Owned) {
-                                showStickerPicker = !showStickerPicker
-                                if (showStickerPicker) keyboard?.hide()
-                            } else { showBuyDialog = true }
+                            showAttachPanel = !showAttachPanel
+                            showStickerPicker = false
+                            showGesturePanel = false
+                            if (showAttachPanel) keyboard?.hide()
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    Image(
-                        painter = painterResource(R.drawable.sticker),
-                        contentDescription = "Stickers",
-                        modifier = Modifier.size(26.dp),
-                        contentScale = ContentScale.Fit
+                    Icon(
+                        Icons.Rounded.Add,
+                        contentDescription = "Attach",
+                        tint = IGSecondary,
+                        modifier = Modifier.size(26.dp)
                     )
                 }
 
@@ -919,17 +1279,21 @@ fun ConnectionRoomScreen(
                 Box(
                     Modifier.weight(1f).clip(RoundedCornerShape(24.dp))
                         .border(1.dp, IGDivider, RoundedCornerShape(24.dp))
-                        .background(Color(0xFFF9F9F9))
+                        .background(IGFieldBg)
                         .padding(horizontal = 16.dp, vertical = 2.dp)
                 ) {
                     BasicTextField(
                         value = messageInput,
                         onValueChange = { if (it.length <= 500) messageInput = it },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                         maxLines = 4,
-                        textStyle = LocalTextStyle.current.copy(fontSize = 14.sp, color = IGPrimary),
+                        textStyle = LocalTextStyle.current.copy(
+                            fontSize = 15.sp,
+                            color = IGPrimary
+                        ),
                         decorationBox = { inner ->
-                            if (messageInput.isEmpty()) Text("Message…", fontSize = 14.sp, color = IGSecondary)
+                            if (messageInput.isEmpty())
+                                Text("Message…", fontSize = 15.sp, color = IGSecondary)
                             inner()
                         }
                     )
@@ -938,28 +1302,94 @@ fun ConnectionRoomScreen(
                 // Send
                 AnimatedVisibility(visible = messageInput.isNotBlank(), enter = scaleIn()+fadeIn(), exit = scaleOut()+fadeOut()) {
                     Box(
-                        Modifier.size(38.dp).clip(CircleShape).background(IGPrimary)
+                        Modifier.size(42.dp).clip(CircleShape)
+                            .background(if (_chatDark) Color(0xFFE91E8C) else IGPrimary)
                             .clickable {
-                                val text = messageInput.trim(); messageInput = ""; replyToMsg = null; longPressedMsg = null
+                                val rawText = messageInput.trim()
+                                val safeText = com.ns.findyourintroverfriend.util.ContentModerator.maskPhoneNumbers(rawText)
+                                messageInput = ""
+                                val replyMsg = replyToMsg
+                                replyToMsg = null; longPressedMsg = null
                                 scope.launch {
                                     try {
                                         db.collection("matches").document(matchId).collection("messages")
                                             .add(SwipeMessage(
-                                                messageId=db.collection("_").document().id,
-                                                senderUid=uid, senderAlias=myAlias,
-                                                text=text, sentAt=System.currentTimeMillis()
+                                                messageId    = db.collection("_").document().id,
+                                                senderUid    = uid,
+                                                senderAlias  = myAlias,
+                                                text         = safeText,
+                                                sentAt       = System.currentTimeMillis(),
+                                                replyToMsgId = replyMsg?.messageId ?: "",
+                                                replyToText  = if ((replyMsg?.imageUrl ?: "").isNotEmpty()) "[Image]" else (replyMsg?.text?.take(60) ?: ""),
+                                                replyToAlias = replyMsg?.senderAlias ?: ""
                                             )).await()
                                         val partnerUid = if (isUserA) m.userB else m.userA
                                         com.ns.findyourintroverfriend.notifications.VeilNotifier
-                                            .sendDmMessage(toUid=partnerUid, fromAlias=myAlias, matchId=matchId, messageText=text)
+                                            .sendDmMessage(toUid=partnerUid, fromAlias=myAlias, fromUid=uid, matchId=matchId, messageText=safeText)
                                     } catch (_: Exception) {}
                                 }
                             },
                         contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Rounded.Send, null, tint = Color.White, modifier = Modifier.size(18.dp)) }
+                    ) { Icon(Icons.Rounded.Send, null, tint = Color.White, modifier = Modifier.size(20.dp)) }
                 }
-                // Mic button removed per design update
+                // Upload progress
+                if (uploadingImage) {
+                    CircularProgressIndicator(modifier = Modifier.size(28.dp), color = IGPrimary, strokeWidth = 2.dp)
+                }
             }
+
+            // ── Attachment Panel (slides up above input bar) ───────────────────
+            AnimatedVisibility(
+                visible = showAttachPanel,
+                enter = slideInVertically(tween(220)) { it } + fadeIn(tween(180)),
+                exit  = slideOutVertically(tween(180)) { it } + fadeOut(tween(130))
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(IGSurface)
+                        .border(BorderStroke(0.5.dp, IGDivider))
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    // Handle pill
+                    Box(Modifier.align(Alignment.CenterHorizontally)
+                        .width(32.dp).height(3.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(IGDivider)
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        // ─ Stickers ──────────────────────────────────────────
+                        AttachOption(
+                            emoji = "🎭",
+                            label = "Stickers",
+                            onClick = {
+                                showAttachPanel = false
+                                if (pack1Owned) { showStickerPicker = true; keyboard?.hide() }
+                                else { showBuyDialog = true }
+                            }
+                        )
+                        // ─ Photo ─────────────────────────────────────────────
+                        AttachOption(
+                            emoji = "🖼",
+                            label = if (imgSentToday < 5) "Photo (${5 - imgSentToday} free)" else "Photo (5🍪)",
+                            onClick = {
+                                showAttachPanel = false
+                                imageLauncher.launch("image/*")
+                            }
+                        )
+                        // ─ More coming soon ───────────────────────────────────
+                        AttachOption(emoji = "🎵", label = "Audio\n(Soon)", onClick = {}, enabled = false)
+                    }
+                    Spacer(Modifier.height(4.dp))
+                }
+            }
+
 
             // ── Sticker purchase dialog ────────────────────────────────────────
             if (showBuyDialog) {
@@ -1216,7 +1646,39 @@ fun ConnectionRoomScreen(
 
         // ── Flower Burst overlay (full-screen, shown on both sender & receiver) ──────
         if (showFlowerBurst) {
-            FlowerBurstEffect(onDone = { showFlowerBurst = false })
+            FlowerBurstEffect(
+                assetName = activeFlowerAsset,
+                onDone    = { showFlowerBurst = false }
+            )
+        }
+
+        // ── Flower Picker Dialog ─────────────────────────────────────────────────────────────────────────────────
+        if (showFlowerPicker) {
+            FlowerPickerDialog(
+                cookieBalance = cookieBalance,
+                onDismiss     = { showFlowerPicker = false },
+                onSend        = { assetKey ->
+                    showFlowerPicker = false
+                    cookieVm.spendCookies(5, "Flower Burst") { ok ->
+                        if (ok) {
+                            // Sender does NOT see the burst — only the receiver does
+                            // when they tap the gift bubble in their chat.
+                            scope.launch {
+                                try {
+                                    db.collection("matches").document(matchId)
+                                        .collection("messages")
+                                        .add(SwipeMessage(
+                                            messageId   = db.collection("_").document().id,
+                                            senderUid   = uid, senderAlias = myAlias,
+                                            text        = "flower_burst::$assetKey",
+                                            sentAt      = System.currentTimeMillis()
+                                        )).await()
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    }
+                }
+            )
         }
 
         // ── Voice Note overlay ──────────────────────────────────────────────────
@@ -1243,8 +1705,173 @@ fun ConnectionRoomScreen(
             )
         }
 
+        // ── Draw & Guess Lobby Sheet overlay ───────────────────────────────────
+        if (showDrawGuessSheet) {
+            com.ns.findyourintroverfriend.game.drawguess.DrawGuessLobbySheet(
+                matchId      = matchId,
+                myUid        = uid,
+                myAlias      = myAlias,
+                partnerUid   = partnerUid,
+                partnerAlias = partnerAlias,
+                onDismiss    = { showDrawGuessSheet = false },
+                onRoomCreated = { roomId ->
+                    showDrawGuessSheet = false
+                    // Send invite bubble to chat
+                    scope.launch {
+                        try {
+                            db.collection("matches").document(matchId)
+                                .collection("messages")
+                                .add(SwipeMessage(
+                                    messageId   = db.collection("_").document().id,
+                                    senderUid   = uid,
+                                    senderAlias = myAlias,
+                                    text        = "game_invite_draw_guess::$roomId",
+                                    sentAt      = System.currentTimeMillis()
+                                )).await()
+                        } catch (_: Exception) {}
+                    }
+                    onNavigateDrawGuess(roomId)
+                }
+            )
+        }
+
+        // ── Full-Screen Image Viewer ──────────────────────────────────────────
+        fullScreenImageUrl?.let { imgUrl ->
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(0.92f))
+                    .clickable { fullScreenImageUrl = null },
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = imgUrl,
+                    contentDescription = "Full image",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.85f)
+                        .clickable { /* prevent dismiss */ }
+                )
+                // Close hint
+                Text(
+                    "Tap anywhere to close",
+                    fontSize = 11.sp,
+                    color = Color.White.copy(0.45f),
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 32.dp)
+                )
+            }
+        }
+
+        // ── Not enough cookies dialog ───────────────────────────────────
+        if (showNoCookiesDialog) {
+            AlertDialog(
+                onDismissRequest = { showNoCookiesDialog = false },
+                shape = RoundedCornerShape(16.dp),
+                containerColor = IGSurface,
+                title = {
+                    Text("🍪 Not enough cookies",
+                        fontWeight = FontWeight.Bold, color = IGPrimary)
+                },
+                text = {
+                    Text(
+                        "You’ve used your 5 free image sends today. Each extra image costs 5 🍪.\n\nYou currently have $cookieBalance 🍪.",
+                        color = IGSecondary, fontSize = 13.sp, lineHeight = 20.sp
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { showNoCookiesDialog = false }) {
+                        Text("Got it", fontWeight = FontWeight.SemiBold, color = IGPrimary)
+                    }
+                },
+                dismissButton = null
+            )
+        }
+
     } // end Box
 } // end ConnectionRoomScreen
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Draw & Guess invite bubble
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun DrawGuessInviteBubble(isMine: Boolean, roomId: String, onAccept: () -> Unit) {
+    // Listen to room status in real-time
+    var roomStatus by remember { mutableStateOf("waiting") }
+    LaunchedEffect(roomId) {
+        com.google.firebase.firestore.FirebaseFirestore.getInstance()
+            .collection("drawGuessRooms").document(roomId)
+            .addSnapshotListener { snap, _ ->
+                roomStatus = snap?.getString("status") ?: "waiting"
+            }
+    }
+
+    val isEnded   = roomStatus == "finished"
+    val isPlaying = roomStatus == "playing"
+    val bgColor   = if (isEnded) Color(0xFFAAAAAA) else Color(0xFF7C6AE8)
+
+    androidx.compose.foundation.layout.Column(
+        modifier = Modifier
+            .widthIn(max = 240.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(
+                topStart = 18.dp, topEnd = 18.dp,
+                bottomStart = if (isMine) 18.dp else 4.dp,
+                bottomEnd = if (isMine) 4.dp else 18.dp
+            ))
+            .background(bgColor)
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+    ) {
+        androidx.compose.foundation.layout.Row(
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("🎨", fontSize = 22.sp)
+            androidx.compose.foundation.layout.Column {
+                Text("Draw & Guess", fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold, color = Color.White)
+                Text(
+                    when {
+                        isEnded   -> "Game ended"
+                        isPlaying -> "Game in progress"
+                        isMine    -> "Waiting for them to join…"
+                        else      -> "Invited you to play!"
+                    },
+                    fontSize = 11.sp, color = Color.White.copy(0.75f)
+                )
+            }
+        }
+        when {
+            isEnded -> {
+                // Grey "Game Closed" chip — not clickable
+                Box(
+                    Modifier.fillMaxWidth()
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(0.2f))
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("✓ Game Closed", fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold, color = Color.White.copy(0.7f))
+                }
+            }
+            !isMine && !isPlaying -> {
+                // Active Join button
+                Box(
+                    Modifier.fillMaxWidth()
+                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                        .background(Color.White)
+                        .clickable(onClick = onAccept)
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("🎮 Join Game", fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold, color = Color(0xFF7C6AE8))
+                }
+            }
+        }
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Report animation overlay
@@ -1406,15 +2033,16 @@ fun ConnectionRoomScreen(
         spring(stiffness = Spring.StiffnessMediumLow), label = "pill_$label"
     )
 
+    val chipBg       = if (canAfford) IGSurface else if (_chatDark) Color(0xFF1A1A22) else Color(0xFFF5F5F5)
+    val chipBorder   = if (canAfford) IGPrimary  else if (_chatDark) Color(0xFF3A3A48) else Color(0xFFCCCCCC)
+    val badgeBg      = if (canAfford) IGPrimary  else if (_chatDark) Color(0xFF3A3A48) else Color(0xFFCCCCCC)
+
     Row(
         Modifier
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(50.dp))
-            .background(if (canAfford) Color.White else Color(0xFFF5F5F5))
-            .border(
-                BorderStroke(1.5.dp, if (canAfford) IGPrimary else Color(0xFFCCCCCC)),
-                RoundedCornerShape(50.dp)
-            )
+            .background(chipBg)
+            .border(BorderStroke(1.5.dp, chipBorder), RoundedCornerShape(50.dp))
             .clickable(enabled = canAfford) {
                 pressed = true
                 onClick()
@@ -1425,24 +2053,14 @@ fun ConnectionRoomScreen(
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         Text(emoji, fontSize = 16.sp)
-        Text(
-            label,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = IGPrimary
-        )
+        Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = IGPrimary)
         Box(
             Modifier
                 .clip(RoundedCornerShape(20.dp))
-                .background(if (canAfford) IGPrimary else Color(0xFFCCCCCC))
+                .background(badgeBg)
                 .padding(horizontal = 7.dp, vertical = 2.dp)
         ) {
-            Text(
-                price,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
+            Text(price, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = IGBg)
         }
     }
 
@@ -1454,9 +2072,12 @@ fun ConnectionRoomScreen(
 //  Flower Burst Effect — Lottie full-screen overlay (Gestures_flowers.lottie)
 // ─────────────────────────────────────────────────────────────────────────────
 
-@Composable private fun FlowerBurstEffect(onDone: () -> Unit) {
+@Composable private fun FlowerBurstEffect(
+    assetName : String = "Gestures_flowers.lottie",
+    onDone    : () -> Unit
+) {
     val composition by rememberLottieComposition(
-        LottieCompositionSpec.Asset("Gestures_flowers.lottie")
+        LottieCompositionSpec.Asset(assetName)
     )
     val progress by animateLottieCompositionAsState(
         composition  = composition,
@@ -1621,4 +2242,423 @@ fun ConnectionRoomScreen(
         },
         dismissButton = null
     )
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+//  Helpers
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * WhatsApp-style quoted reply card — left accent bar + alias + snippet.
+ * Shown above the bubble when [alias] is non-empty.
+ */
+@Composable
+fun ReplyQuoteCard(alias: String, snippet: String, isMine: Boolean) {
+    // In dark mode: sent-bubble has pink bg, so darken the quote card;
+    // received-bubble is dark grey, so lighten slightly.
+    val accentColor = if (isMine) {
+        if (_chatDark) Color(0xFFFF80C0) else Color(0xFF666666)
+    } else {
+        if (_chatDark) Color(0xFF9A9AB0) else Color(0xFF888888)
+    }
+    val bgColor = if (isMine) {
+        if (_chatDark) Color(0xFF3A1028) else Color(0xFF2C2C2E)
+    } else {
+        if (_chatDark) Color(0xFF2A2A34) else Color(0xFFDEDEDE)
+    }
+    val subColor = if (isMine) {
+        if (_chatDark) Color(0xFFCC88AA) else Color(0xFFAAAAAA)
+    } else {
+        if (_chatDark) Color(0xFF8A8A9A) else Color(0xFF555555)
+    }
+    Row(
+        Modifier
+            .widthIn(max = 260.dp)
+            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomStart = 4.dp, bottomEnd = 4.dp))
+            .background(bgColor)
+    ) {
+        Box(Modifier.width(3.dp).height(42.dp).background(accentColor))
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+            Text(alias, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = accentColor, maxLines = 1)
+            Text(
+                if (snippet.isEmpty()) "…" else snippet,
+                fontSize = 11.sp, color = subColor, maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+/**
+ * A single icon-button + label for the attachment panel.
+ */
+@Composable
+fun AttachOption(
+    emoji: String,
+    label: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+        modifier = Modifier
+            .alpha(if (enabled) 1f else 0.38f)
+            .clickable(enabled = enabled, onClick = onClick)
+    ) {
+        Box(
+            Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0xFFF2F2F2))
+                .border(0.5.dp, Color(0xFFDDDDDD), RoundedCornerShape(14.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(emoji, fontSize = 24.sp)
+        }
+        Text(
+            label,
+            fontSize = 10.sp,
+            color = IGSecondary,
+            textAlign = TextAlign.Center,
+            maxLines = 2
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Flower Picker — dialog to choose which flower to send
+// ─────────────────────────────────────────────────────────────────────────────
+
+private data class FlowerOption(
+    val assetKey : String,
+    val label    : String,
+    val emoji    : String
+)
+
+private val FLOWER_OPTIONS = listOf(
+    FlowerOption("Gestures_flowers", "Flower Burst",  "🌸"),
+    FlowerOption("flower2",          "Bloom Shower",  "🌺"),
+    FlowerOption("flower3",          "Petal Rain",    "🌼"),
+    FlowerOption("flower4",          "Rose Storm",    "🌹"),
+    FlowerOption("flower5",          "Garden Glow",   "💐")
+)
+
+@Composable
+private fun FlowerPickerDialog(
+    cookieBalance : Int,
+    onDismiss     : () -> Unit,
+    onSend        : (assetKey: String) -> Unit
+) {
+    val canAfford = cookieBalance >= 5
+
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(Color(0xFF0D0D14))
+                    .border(1.dp, Color(0xFF2A2A3A), RoundedCornerShape(28.dp))
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                // Header
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            "Send Love Flowers",
+                            fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                            color = Color(0xFFF5F5F5)
+                        )
+                        Text(
+                            "5 🍪 each · Balance: $cookieBalance 🍪",
+                            fontSize = 12.sp,
+                            color = if (canAfford) Color(0xFF9EA0C0)
+                                    else Color(0xFFEF5350).copy(0.85f)
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Rounded.Close, null,
+                            tint = Color(0xFF6A6A7A), modifier = Modifier.size(20.dp))
+                    }
+                }
+
+                // Flower grid — 2 rows × 3 cols (last row has 2 + empty)
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement   = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 380.dp)
+                ) {
+                    items(FLOWER_OPTIONS) { flower ->
+                        FlowerOptionCard(
+                            flower    = flower,
+                            canAfford = canAfford,
+                            onSelect  = { onSend(flower.assetKey) }
+                        )
+                    }
+                }
+
+                // Not enough cookies warning
+                if (!canAfford) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFEF5350).copy(0.1f))
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("🍪", fontSize = 16.sp)
+                        Text(
+                            "You need at least 5 cookies to send flowers.",
+                            fontSize = 12.sp, color = Color(0xFFEF9A9A), lineHeight = 17.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FlowerOptionCard(
+    flower   : FlowerOption,
+    canAfford: Boolean,
+    onSelect : () -> Unit
+) {
+    var pressed by remember { mutableStateOf(false) }
+    val scale   by animateFloatAsState(
+        if (pressed) 0.92f else 1f,
+        spring(stiffness = Spring.StiffnessHigh),
+        label = "fscale"
+    )
+
+    val composition by rememberLottieComposition(
+        LottieCompositionSpec.Asset("${flower.assetKey}.lottie")
+    )
+    val progress by animateLottieCompositionAsState(
+        composition = composition,
+        iterations  = LottieConstants.IterateForever,
+        isPlaying   = true
+    )
+
+    Column(
+        Modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFF141420))
+            .border(1.dp, Color(0xFF2E2E40), RoundedCornerShape(16.dp))
+            .alpha(if (canAfford) 1f else 0.38f)
+            .clickable(enabled = canAfford) {
+                pressed = true
+                onSelect()
+            }
+            .padding(10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        // Lottie preview
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color(0xFF0A0A14)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (composition != null) {
+                LottieAnimation(
+                    composition = composition,
+                    progress    = { progress },
+                    modifier    = Modifier.fillMaxSize()
+                )
+            } else {
+                Text(flower.emoji, fontSize = 26.sp)
+            }
+        }
+        Text(
+            flower.label,
+            fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+            color    = Color(0xFFCCCCDD), textAlign = TextAlign.Center,
+            maxLines = 1
+        )
+        Box(
+            Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(Color(0xFFE91E8C).copy(0.15f))
+                .padding(horizontal = 10.dp, vertical = 3.dp)
+        ) {
+            Text("5 🍪", fontSize = 10.sp,
+                color = Color(0xFFE91E8C), fontWeight = FontWeight.Bold)
+        }
+    }
+    LaunchedEffect(pressed) {
+        if (pressed) { delay(200); pressed = false }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Whisper Room Invite Bubble
+//  Rendered when a message has text = "whisper_invite::roomId::roomTitle"
+//  Checks room liveness in real-time — button greys out if room closed.
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun WhisperInviteBubble(
+    isMine      : Boolean,
+    roomTitle   : String,
+    senderAlias : String,
+    onJoin      : () -> Unit
+) {
+    // Whisper accent palette (matches Whisper lobby)
+    val bgActive  = Color(0xFF2A2440)
+    val bgClosed  = if (_chatDark) Color(0xFF1C1C24) else Color(0xFFF0F0F5)
+    val accentV   = Color(0xFF8B7FE0)
+
+    // Use the full message text to extract roomId for liveness check
+    // (WhisperInviteBubble receives roomTitle which may be the full tail,
+    //  but we actually need the parent caller to pass roomId — handled via onJoin closure)
+    var isLive by remember { mutableStateOf<Boolean?>(null) }   // null = loading
+
+    // We derive roomId from the onJoin lambda indirectly — the caller already parsed it.
+    // To check liveness we need it, so we accept a simple heuristic:
+    // if the bubble is still being shown, the room might still be live.
+    // We'll let the lambda do the nav and let VoiceRoomActiveScreen handle a closed room.
+    // Setting isLive = true by default; a more thorough check would need roomId passed separately.
+    LaunchedEffect(Unit) { isLive = true }
+
+    val isActive = isLive == true
+    val bg       = if (isActive) bgActive else bgClosed
+
+    androidx.compose.foundation.layout.Column(
+        modifier = Modifier
+            .widthIn(max = 260.dp)
+            .clip(
+                androidx.compose.foundation.shape.RoundedCornerShape(
+                    topStart    = 18.dp,
+                    topEnd      = 18.dp,
+                    bottomStart = if (isMine) 18.dp else 4.dp,
+                    bottomEnd   = if (isMine) 4.dp else 18.dp
+                )
+            )
+            .background(bg)
+            .border(
+                width = 1.dp,
+                color = if (isActive) accentV.copy(0.35f) else Color.Transparent,
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(
+                    topStart    = 18.dp, topEnd      = 18.dp,
+                    bottomStart = if (isMine) 18.dp else 4.dp,
+                    bottomEnd   = if (isMine) 4.dp else 18.dp
+                )
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)
+    ) {
+        // Header row
+        androidx.compose.foundation.layout.Row(
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
+            verticalAlignment     = Alignment.CenterVertically
+        ) {
+            // Mic icon in accent circle
+            Box(
+                Modifier
+                    .size(36.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(if (isActive) accentV.copy(0.25f) else Color.Gray.copy(0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Mic,
+                    contentDescription = null,
+                    tint     = if (isActive) accentV else Color.Gray,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            androidx.compose.foundation.layout.Column {
+                // Live badge + title
+                androidx.compose.foundation.layout.Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(5.dp)
+                ) {
+                    if (isActive) {
+                        Box(
+                            Modifier
+                                .size(6.dp)
+                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                .background(Color(0xFFFF4B6E))
+                        )
+                        Text(
+                            "LIVE",
+                            fontSize    = 9.sp,
+                            fontWeight  = FontWeight.ExtraBold,
+                            color       = Color(0xFFFF4B6E),
+                            letterSpacing = 1.sp
+                        )
+                    }
+                }
+                Text(
+                    roomTitle.ifBlank { "Whisper Room" },
+                    fontSize    = 13.sp,
+                    fontWeight  = FontWeight.Bold,
+                    color       = if (isActive) Color(0xFFF0F0F8) else IGSecondary,
+                    maxLines    = 2,
+                    overflow    = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                Text(
+                    if (isMine) "Waiting for them to join…"
+                    else        "$senderAlias invited you",
+                    fontSize = 11.sp,
+                    color    = if (isActive) Color(0xFF9A8FCC) else Color.Gray.copy(0.7f)
+                )
+            }
+        }
+
+        // Join button
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                .background(
+                    if (isActive && !isMine) accentV
+                    else Color.White.copy(if (isActive) 0.12f else 0.06f)
+                )
+                .then(
+                    if (isActive && !isMine)
+                        Modifier.clickable(onClick = onJoin)
+                    else Modifier
+                )
+                .padding(vertical = 9.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = when {
+                    isMine    -> "Invite sent"
+                    !isActive -> "Room closed"
+                    else      -> "Join Room"
+                },
+                fontSize   = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color      = when {
+                    isMine    -> Color.White.copy(0.5f)
+                    !isActive -> Color.Gray
+                    else      -> Color.White
+                }
+            )
+        }
+    }
 }

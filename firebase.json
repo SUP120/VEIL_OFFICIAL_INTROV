@@ -4,6 +4,9 @@
         "runtime": "nodejs20"
     },
     "firestore": {
-        "rules": "to_read/firestore.rules"
+        "rules": "firestore.rules"
+    },
+    "storage": {
+        "rules": "storage.rules"
     }
 }

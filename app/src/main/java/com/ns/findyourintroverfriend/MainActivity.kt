@@ -8,6 +8,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,9 +16,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -26,6 +31,8 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.android.play.core.review.ReviewManagerFactory
+import com.ns.findyourintroverfriend.util.VeilThemeManager
+import com.ns.findyourintroverfriend.util.RateAppManager
 import com.ns.findyourintroverfriend.billing.VeilBillingClient
 import com.ns.findyourintroverfriend.data.GroupFields
 import com.ns.findyourintroverfriend.navigation.VeilNavGraph
@@ -33,11 +40,14 @@ import com.ns.findyourintroverfriend.navigation.VeilRoute
 import com.ns.findyourintroverfriend.notifications.VeilNotifier
 import com.ns.findyourintroverfriend.ui.theme.VeilTheme
 import com.ns.findyourintroverfriend.util.BanStatus
+import com.ns.findyourintroverfriend.util.PresenceManager
 import com.ns.findyourintroverfriend.util.StrikeManager
 import com.onesignal.OneSignal
+import android.content.Intent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.delay
@@ -45,12 +55,19 @@ import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
 
+    // ── Holds intents that arrive while the app is already running (onNewIntent) ─
+    private val _pendingIntent = MutableStateFlow<Intent?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
 
         // ── Crashlytics — enable crash reporting ──────────────────────────────
         FirebaseCrashlytics.getInstance().isCrashlyticsCollectionEnabled = true
+        // ── Load saved theme preference (SYSTEM / DARK / LIGHT) ──────────────
+        VeilThemeManager.init(this)
+        // ── Rate prompt: stamp first-launch time so the 3-day timer can start ─────
+        RateAppManager.recordFirstLaunch(this)
         // ── Google Play Billing — init once on app start ────────────────────
         VeilBillingClient.init(this)
 
@@ -66,17 +83,24 @@ class MainActivity : ComponentActivity() {
             // Flush any FCM token that refreshed before this login (e.g. token rotated while signed out)
             com.ns.findyourintroverfriend.notifications.VeilMessagingService
                 .flushPendingTokenIfNeeded(this, uid)
+            // ── Write presence immediately so last seen is available to others ──
+            PresenceManager.goOnline(this)
         }
 
         // ── Read DM deep-link from notification tap intent ────────────────────
-        // When the user taps a "dm_message" notification, VeilMessagingService puts
-        // EXTRA_OPEN_DM=true + EXTRA_MATCH_ID into the intent. We capture it here
-        // and pass it into setContent so the nav graph can navigate immediately.
         val pendingDmMatchId: String? =
             if (intent?.getBooleanExtra(
                 com.ns.findyourintroverfriend.notifications.VeilMessagingService.EXTRA_OPEN_DM, false) == true)
                 intent.getStringExtra(
                     com.ns.findyourintroverfriend.notifications.VeilMessagingService.EXTRA_MATCH_ID)
+            else null
+
+        // ── Read Whisper room invite deep-link ─────────────────────────────────
+        val pendingVoiceRoomId: String? =
+            if (intent?.getBooleanExtra(
+                com.ns.findyourintroverfriend.notifications.VeilMessagingService.EXTRA_OPEN_VOICE_ROOM, false) == true)
+                intent.getStringExtra(
+                    com.ns.findyourintroverfriend.notifications.VeilMessagingService.EXTRA_ROOM_ID)
             else null
 
         enableEdgeToEdge()
@@ -88,9 +112,45 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             VeilTheme {
-                val startDest = rememberStartDestination(pendingDmMatchId)
+                // ── React to new intents from notification taps while app is open ───
+                val pendingIntent by _pendingIntent.collectAsState()
+                val navControllerRef = remember { androidx.compose.runtime.mutableStateOf<androidx.navigation.NavController?>(null) }
+                LaunchedEffect(pendingIntent) {
+                    val ni = pendingIntent ?: return@LaunchedEffect
+                    val ctrl = navControllerRef.value ?: return@LaunchedEffect
+                    val EXTRA_OPEN_DM = com.ns.findyourintroverfriend.notifications.VeilMessagingService.EXTRA_OPEN_DM
+                    val EXTRA_MATCH_ID = com.ns.findyourintroverfriend.notifications.VeilMessagingService.EXTRA_MATCH_ID
+                    val EXTRA_VOICE = com.ns.findyourintroverfriend.notifications.VeilMessagingService.EXTRA_OPEN_VOICE_ROOM
+                    val EXTRA_ROOM_ID = com.ns.findyourintroverfriend.notifications.VeilMessagingService.EXTRA_ROOM_ID
+                    when {
+                        ni.getBooleanExtra(EXTRA_OPEN_DM, false) -> {
+                            val matchId = ni.getStringExtra(EXTRA_MATCH_ID)
+                            if (!matchId.isNullOrBlank()) {
+                                ctrl.navigate("${VeilRoute.CONNECTION_ROOM}/$matchId") {
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
+                        ni.getBooleanExtra(EXTRA_VOICE, false) -> {
+                            val roomId = ni.getStringExtra(EXTRA_ROOM_ID)
+                            if (!roomId.isNullOrBlank()) {
+                                ctrl.navigate(com.ns.findyourintroverfriend.navigation.VeilRoute.voiceRoomActive(roomId)) {
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
+                    }
+                    _pendingIntent.value = null
+                }
+
+                val startDest = rememberStartDestination(
+                    pendingDmMatchId    = pendingDmMatchId,
+                    pendingVoiceRoomId  = pendingVoiceRoomId
+                )
                 if (startDest != null) {
                     val navController = rememberNavController()
+                    // Store reference so onNewIntent LaunchedEffect can navigate
+                    LaunchedEffect(navController) { navControllerRef.value = navController }
 
                     // ── Double-back-press to exit ──────────────────────────────
                     // On root screens (Home, Auth), first back press shows a toast.
@@ -133,13 +193,199 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    VeilNavGraph(
-                        navController    = navController,
-                        startDestination = startDest
-                    )
+                    // ── Rate-app dialog overlay ─────────────────────────────────────
+                    val ctx = LocalContext.current
+                    var showRateDialog by remember { mutableStateOf(false) }
+
+                    // Check once after the nav graph settles (500ms delay avoids
+                    // popping on top of the splash or first frame render).
+                    LaunchedEffect(startDest) {
+                        delay(1_500L)
+                        if (RateAppManager.shouldShow(ctx)) {
+                            showRateDialog = true
+                            RateAppManager.markShownThisSession(ctx)
+                        }
+                    }
+
+                    Box(Modifier.fillMaxSize()) {
+                        VeilNavGraph(
+                            navController    = navController,
+                            startDestination = startDest
+                        )
+
+                        if (showRateDialog) {
+                            RateAppDialog(
+                                onReviewNow = {
+                                    showRateDialog = false
+                                    RateAppManager.markReviewed(ctx)
+                                    // Try Google Play In-App Review first, fall back to browser
+                                    val manager = ReviewManagerFactory.create(ctx)
+                                    val request = manager.requestReviewFlow()
+                                    request.addOnCompleteListener { task ->
+                                        if (task.isSuccessful) {
+                                            manager.launchReviewFlow(
+                                                this@MainActivity, task.result
+                                            )
+                                        } else {
+                                            // Fallback: open Play Store listing directly
+                                            try {
+                                                val intent = android.content.Intent(
+                                                    android.content.Intent.ACTION_VIEW,
+                                                    android.net.Uri.parse(
+                                                        "market://details?id=${ctx.packageName}"
+                                                    )
+                                                ).apply {
+                                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                }
+                                                ctx.startActivity(intent)
+                                            } catch (_: Exception) {
+                                                ctx.startActivity(android.content.Intent(
+                                                    android.content.Intent.ACTION_VIEW,
+                                                    android.net.Uri.parse(
+                                                        "https://play.google.com/store/apps/details?id=${ctx.packageName}"
+                                                    )
+                                                ).apply {
+                                                    addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                                })
+                                            }
+                                        }
+                                    }
+                                },
+                                onRemindLater = {
+                                    showRateDialog = false
+                                    RateAppManager.snooze(ctx)
+                                },
+                                onAlreadyReviewed = {
+                                    showRateDialog = false
+                                    RateAppManager.markReviewed(ctx)
+                                }
+                            )
+                        }
+                    }
                 } else {
                     // H5: Show branded splash while destination resolves (no more blank white flash)
                     VeilSplashLoader()
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)  // keep getIntent() consistent
+        _pendingIntent.value = intent
+    }
+
+    override fun onResume() {
+        super.onResume()
+        com.ns.findyourintroverfriend.notifications.ActiveChatTracker.isAppForeground = true
+        if (FirebaseAuth.getInstance().currentUser != null) {
+            PresenceManager.goOnline(this)
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        com.ns.findyourintroverfriend.notifications.ActiveChatTracker.isAppForeground = false
+        PresenceManager.goOffline()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Rate-App Dialog
+// ─────────────────────────────────────────────────────────────────────────────
+
+@Composable
+private fun RateAppDialog(
+    onReviewNow       : () -> Unit,
+    onRemindLater     : () -> Unit,
+    onAlreadyReviewed : () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onRemindLater,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF111116), RoundedCornerShape(24.dp))
+                    .padding(horizontal = 24.dp, vertical = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Stars
+                Text("⭐⭐⭐⭐⭐", fontSize = 28.sp)
+
+                Spacer(Modifier.height(2.dp))
+
+                // Headline
+                Text(
+                    "Enjoying Veil?",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFF0F0F5),
+                    textAlign = TextAlign.Center
+                )
+
+                // Body — warm, honest, non-pushy
+                Text(
+                    "We're a small team building something special for introverts. " +
+                    "A quick review on the Play Store helps more people find Veil — " +
+                    "and it genuinely means the world to us. 🙏",
+                    fontSize = 13.sp,
+                    color = Color(0xFF9A9AB0),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 20.sp
+                )
+
+                Spacer(Modifier.height(4.dp))
+
+                // Primary CTA — Review Now
+                Button(
+                    onClick = onReviewNow,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFE91E8C)
+                    )
+                ) {
+                    Text(
+                        "⭐  Rate Veil Now",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = Color.White
+                    )
+                }
+
+                // Secondary — Remind later
+                OutlinedButton(
+                    onClick = onRemindLater,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2A2A38)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Color(0xFF9A9AB0)
+                    )
+                ) {
+                    Text("Remind Me Later", fontSize = 14.sp)
+                }
+
+                // Tertiary — Already reviewed
+                TextButton(
+                    onClick = onAlreadyReviewed,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "I've Already Reviewed",
+                        fontSize = 13.sp,
+                        color = Color(0xFF666680)
+                    )
                 }
             }
         }
@@ -262,7 +508,10 @@ private fun VeilSplashLoader() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun rememberStartDestination(pendingDmMatchId: String? = null): String? {
+private fun rememberStartDestination(
+    pendingDmMatchId   : String? = null,
+    pendingVoiceRoomId : String? = null
+): String? {
     val auth = FirebaseAuth.getInstance()
     val db   = FirebaseFirestore.getInstance()
 
@@ -277,6 +526,13 @@ private fun rememberStartDestination(pendingDmMatchId: String? = null): String? 
         if (user == null) {
             minTimer.await()
             startDest = VeilRoute.AUTH
+            return@LaunchedEffect
+        }
+
+        // ── Whisper invite deep-link: go straight to the voice room ─────────
+        if (!pendingVoiceRoomId.isNullOrBlank()) {
+            minTimer.await()
+            startDest = com.ns.findyourintroverfriend.navigation.VeilRoute.voiceRoomActive(pendingVoiceRoomId)
             return@LaunchedEffect
         }
 

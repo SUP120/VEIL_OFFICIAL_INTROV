@@ -1,4 +1,4 @@
-package com.ns.findyourintroverfriend.swipe
+﻿package com.ns.findyourintroverfriend.swipe
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -27,29 +27,35 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.airbnb.lottie.compose.*
 import java.text.SimpleDateFormat
 import java.util.*
+import com.ns.findyourintroverfriend.util.LocalVeilIsDark
+import com.ns.findyourintroverfriend.util.VeilThemeManager
 
-// ── Professional Design Tokens (Instagram-inspired) ──────────────────────────
-private val MBg         = Color(0xFFFFFFFF)      // Pure white background
-private val MCard       = Color(0xFFFFFFFF)      // White cards
-private val MBorder     = Color(0xFFDBDBDB)      // Subtle gray border (Instagram style)
-private val MPrimary    = Color(0xFF262626)      // Near black text
-private val MSecondary  = Color(0xFF8E8E8E)      // Gray secondary text
-private val MMuted      = Color(0xFFC7C7C7)      // Light gray
-private val MAccent     = Color(0xFF0095F6)      // Instagram blue
-private val MAccentSoft = Color(0xFFE7F3FF)      // Very light blue
-private val MGreen      = Color(0xFF00BA34)      // WhatsApp green
-private val MRed        = Color(0xFFED4956)      // Instagram red
-private val MRedSoft    = Color(0xFFFFF0F1)      // Light red bg
+// -- Dark-mode state -------------------------------------------------------
+private var _matchDark by mutableStateOf(VeilThemeManager.initialResolvedDark)
+
+// -- Design tokens (theme-aware) -------------------------------------------
+private val MBg         get() = if (_matchDark) Color(0xFF111118) else Color(0xFFFFFFFF)
+private val MCard       get() = if (_matchDark) Color(0xFF1D1D28) else Color(0xFFFFFFFF)
+private val MBorder     get() = if (_matchDark) Color(0xFF272730) else Color(0xFFDBDBDB)
+private val MPrimary    get() = if (_matchDark) Color(0xFFDFDFEA) else Color(0xFF262626)
+private val MSecondary  get() = if (_matchDark) Color(0xFFAAAAB8) else Color(0xFF8E8E8E)
+private val MMuted      get() = if (_matchDark) Color(0xFF787888) else Color(0xFFC7C7C7)
+private val MAccent            = Color(0xFF0095F6)
+private val MAccentSoft get() = if (_matchDark) Color(0xFF0A1E35) else Color(0xFFE7F3FF)
+private val MGreen             = Color(0xFF00BA34)
+private val MRed               = Color(0xFFED4956)
+private val MRedSoft    get() = if (_matchDark) Color(0xFF2D0A0F) else Color(0xFFFFF0F1)
 
 // Avatar colors - subtle, professional pastels
-private val avatarColors = listOf(
-    Color(0xFFE3F2FD), // Light blue
-    Color(0xFFFCE4EC), // Light pink
-    Color(0xFFF3E5F5), // Light purple
-    Color(0xFFE8F5E9), // Light green
-    Color(0xFFFFF3E0), // Light orange
-    Color(0xFFE0F2F1), // Light teal
+private val avatarColorsLight = listOf(
+    Color(0xFFE3F2FD), Color(0xFFFCE4EC), Color(0xFFF3E5F5),
+    Color(0xFFE8F5E9), Color(0xFFFFF3E0), Color(0xFFE0F2F1)
 )
+private val avatarColorsDark = listOf(
+    Color(0xFF0A1520), Color(0xFF1F0A14), Color(0xFF140A1F),
+    Color(0xFF0A1A0F), Color(0xFF1A1207), Color(0xFF0A1A18)
+)
+private val avatarColors get() = if (_matchDark) avatarColorsDark else avatarColorsLight
 
 private fun avatarColor(uid: String): Color =
     avatarColors[kotlin.math.abs(uid.hashCode()) % avatarColors.size]
@@ -94,6 +100,9 @@ fun MatchesScreen(
     LaunchedEffect(tab) {
         if (tab == 2) vm.markAllComplimentsRead()
     }
+
+    val _veilIsDark = LocalVeilIsDark.current
+    SideEffect { _matchDark = _veilIsDark }
 
     Column(Modifier.fillMaxSize().background(MBg).systemBarsPadding()) {
         // ── Header (Instagram style) ──────────────────────────────────────────
@@ -227,7 +236,7 @@ private fun MTabRow(
                                 Modifier
                                     .height(20.dp)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(if (sel) MAccent else Color(0xFFE8E8E8))
+                                    .background(if (sel) MAccent else if (_matchDark) Color(0xFF272730) else Color(0xFFE8E8E8))
                                     .padding(horizontal = 7.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -341,7 +350,7 @@ private fun MPendingCard(p: PendingLike, onSmash: () -> Unit, onPass: () -> Unit
                     Modifier
                         .height(18.dp)
                         .clip(RoundedCornerShape(9.dp))
-                        .background(Color(0xFFFFEBEE))
+                        .background(if (_matchDark) Color(0xFF2D0A0F) else Color(0xFFFFEBEE))
                         .padding(horizontal = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -434,7 +443,7 @@ private fun MMatchedTab(
             Modifier.fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 10.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFFF2F2F2))
+                .background(if (_matchDark) Color(0xFF1E1E26) else Color(0xFFF2F2F2))
                 .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -494,7 +503,7 @@ private fun MMatchCard(
 
     var isPressed by remember { mutableStateOf(false) }
     val bgColor by animateColorAsState(
-        if (isPressed) Color(0xFFF2F2F2) else if (isUnread) Color(0xFFFAFAFA) else MBg,
+        if (isPressed) (if (_matchDark) Color(0xFF272730) else Color(0xFFF2F2F2)) else if (isUnread) (if (_matchDark) Color(0xFF16161D) else Color(0xFFFAFAFA)) else MBg,
         label = "bgColor"
     )
 
@@ -593,17 +602,17 @@ private fun MComplimentsTab(
     var subTab by remember { mutableIntStateOf(0) }
     val pendingCount = received.count { it.status == "pending" }
 
-    Column(Modifier.fillMaxSize().background(Color(0xFFF6F7FB))) {
+    Column(Modifier.fillMaxSize().background(if (_matchDark) MBg else Color(0xFFF6F7FB))) {
 
         // ── Sub-tab pill selector ──────────────────────────────────────────────
         Box(
-            Modifier.fillMaxWidth().background(Color.White)
+            Modifier.fillMaxWidth().background(MCard)
                 .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
             Box(
                 Modifier.fillMaxWidth()
                     .clip(RoundedCornerShape(30.dp))
-                    .background(Color(0xFFF0F1F5))
+                    .background(if (_matchDark) Color(0xFF1A1A26) else Color(0xFFF0F1F5))
                     .padding(3.dp)
             ) {
                 Row(Modifier.fillMaxWidth()) {
@@ -612,7 +621,7 @@ private fun MComplimentsTab(
                         Box(
                             Modifier.weight(1f)
                                 .clip(RoundedCornerShape(26.dp))
-                                .background(if (sel) Color.White else Color.Transparent)
+                                .background(if (sel) MCard else Color.Transparent)
                                 .shadow(if (sel) 2.dp else 0.dp, RoundedCornerShape(26.dp))
                                 .clickable { subTab = i }
                                 .padding(vertical = 10.dp),
@@ -729,7 +738,7 @@ private fun MComplimentCard(
                 )
             },
             shape = RoundedCornerShape(20.dp),
-            containerColor = Color.White
+            containerColor = MCard
         )
     }
 
@@ -738,7 +747,7 @@ private fun MComplimentCard(
             .fillMaxWidth()
             .shadow(1.dp, RoundedCornerShape(20.dp), clip = false)
             .clip(RoundedCornerShape(20.dp))
-            .background(Color.White)
+            .background(MCard)
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -755,7 +764,7 @@ private fun MComplimentCard(
                     Box(
                         Modifier
                             .size(14.dp).align(Alignment.TopEnd)
-                            .clip(CircleShape).background(Color.White)
+                            .clip(CircleShape).background(MCard)
                             .padding(2.dp)
                     ) {
                         Box(Modifier.fillMaxSize().clip(CircleShape).background(MAccent))
@@ -964,7 +973,7 @@ private fun SentComplimentCard(s: SentCompliment) {
             .fillMaxWidth()
             .shadow(1.dp, RoundedCornerShape(20.dp), clip = false)
             .clip(RoundedCornerShape(20.dp))
-            .background(Color.White)
+            .background(MCard)
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {

@@ -36,23 +36,40 @@ import kotlin.math.abs
 import com.airbnb.lottie.compose.*
 import androidx.compose.ui.res.painterResource
 import com.ns.findyourintroverfriend.R
+import com.ns.findyourintroverfriend.util.LocalVeilIsDark
+import com.ns.findyourintroverfriend.util.VeilThemeManager
 
 
-// Veil refined theme - calm, professional, introvert-friendly
-private val SBg         = Color(0xFFFAFAFA)   // soft off-white
-private val SCard       = Color(0xFFFFFFFF)   // pure white
-private val SCardBorder = Color(0xFFE8E8E8)   // subtle gray border
-private val SPrimary    = Color(0xFF1F1F1F)   // soft black for text
-private val SSecondary  = Color(0xFF6B6B6B)   // medium gray
-private val SMuted      = Color(0xFF9E9E9E)   // light gray
-private val SAccent     = Color(0xFF6366F1)   // refined indigo
-private val SAccentSoft = Color(0xFFF0F0FF)   // very light indigo
-private val SLike       = Color(0xFF10B981)   // emerald green
-private val SPass       = Color(0xFFEF4444)   // clean red
-private val SGold       = Color(0xFFF59E0B)   // amber
-private val SGoldSoft   = Color(0xFFFFF7ED)   // light amber
-private val SUndo       = Color(0xFF3B82F6)   // blue
-private val SSuperLike  = Color(0xFF8B5CF6)   // purple star
+// ── Dark-mode state ──────────────────────────────────────────────────────────
+// Synced from LocalVeilIsDark via SideEffect in SwipeContent.
+private var _swipeDark by mutableStateOf(VeilThemeManager.initialResolvedDark)
+
+// ── Peaceful Serenity Palette ─────────────────────────────────────────────────
+// Light: warm parchment, dusty mauve, sage green — calm and peaceful
+// Dark : deep ink with gentle warm tones
+private val SBg         get() = if (_swipeDark) Color(0xFF0F0F14) else Color(0xFFFBF8F4)   // warm parchment / deep ink
+private val SCard       get() = if (_swipeDark) Color(0xFF17171E) else Color(0xFFFFFFFF)   // card surface
+private val SCardBorder get() = if (_swipeDark) Color(0xFF2C2C34) else Color(0xFFE8E3DC)   // soft border
+private val SPrimary    get() = if (_swipeDark) Color(0xFFE0DDD8) else Color(0xFF2C2825)   // warm near-black
+private val SSecondary  get() = if (_swipeDark) Color(0xFF918E8A) else Color(0xFF7A7470)   // warm stone
+private val SMuted      get() = if (_swipeDark) Color(0xFF5A5855) else Color(0xFFC4BFBA)   // muted warm
+// Main accent: dusty mauve — calm, introverted
+private val SAccent            = Color(0xFFA07C8C)   // dusty mauve
+private val SAccentSoft get() = if (_swipeDark) Color(0xFF251520) else Color(0xFFF7EFF3)   // very soft mauve tint
+// Like: sage green — nature, calm
+private val SLike              = Color(0xFF7A9E87)   // sage green
+private val SLikeSoft   get() = if (_swipeDark) Color(0xFF0E1E13) else Color(0xFFEFF5F1)   // soft sage tint
+// Pass: muted terracotta — not harsh red
+private val SPass              = Color(0xFFBF6B6B)   // muted terracotta
+private val SPassSoft   get() = if (_swipeDark) Color(0xFF1E0E0E) else Color(0xFFF9EEEE)   // soft terracotta tint
+// Gold: warm sand — not vivid yellow
+private val SGold              = Color(0xFFBFA882)   // warm sand/taupe
+private val SGoldSoft   get() = if (_swipeDark) Color(0xFF1A1610) else Color(0xFFF7F3EC)   // soft sand tint
+// Undo: soft dusty blue
+private val SUndo              = Color(0xFF7B9AC4)   // dusty blue
+// Super-like: a deeper mauve (compliment)
+private val SSuperLike         = Color(0xFF9B7BAE)   // soft plum/lavender
+private val SSuperSoft  get() = if (_swipeDark) Color(0xFF1A1225) else Color(0xFFF3EFF8)   // soft plum tint
 
 // ── Top-level entry: called by VeilNavGraph ──────────────────────────────────
 @Composable
@@ -111,83 +128,94 @@ fun SwipeContent(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize().background(Color.White)) {
-        // Profile creation/edit shown as full-screen overlay — shown before feed
-        if (isCreatingProfile || isEditingProfile) {
-            SwipeSetupInline(
-                vm = vm,
-                isEditing = isEditingProfile,
-                onBack = { isEditingProfile = false; isCreatingProfile = false }
-            )
-            return@Box
-        }
+    // Sync dark mode
+    val _veilIsDark = LocalVeilIsDark.current
+    SideEffect { _swipeDark = _veilIsDark }
 
-        when {
-            loading -> SwipeSkeletonLoader()
-            else -> Column(Modifier.fillMaxSize()) {
-                // ── Gamified Header ──
+    // Auto-refresh once when loading finishes and feed is empty
+    val hasAutoRefreshed = remember { mutableStateOf(false) }
+    LaunchedEffect(loading) {
+        if (!loading && feed.isEmpty() && !hasAutoRefreshed.value) {
+            hasAutoRefreshed.value = true
+            vm.forceSeedAndReload()
+        }
+    }
+
+    Box(modifier = modifier.fillMaxSize().background(SBg)) {
+
+        val inSetup = isCreatingProfile || isEditingProfile
+
+        // ── Main swipe UI — fades out when profile setup opens ────────────────
+        AnimatedVisibility(
+            visible = !inSetup,
+            enter   = fadeIn(tween(220)),
+            exit    = fadeOut(tween(180))
+        ) {
+            Column(Modifier.fillMaxSize()) {
+                // -- Gamified Header --
                 val pulseInf = rememberInfiniteTransition(label = "hp")
                 val headerPulse by pulseInf.animateFloat(1f, 1.08f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), "hps")
                 val hapticH = LocalHapticFeedback.current
                 Row(
                     Modifier.fillMaxWidth()
-                        .background(Color.White)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(SBg, SAccentSoft.let { if (_swipeDark) Color(0xFF1A1020) else Color(0xFFF9F3F6) }, SBg)
+                            )
+                        )
                         .border(BorderStroke(0.5.dp, SCardBorder))
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                        .padding(horizontal = 18.dp, vertical = 13.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // Left: Logo + live swipe counter pill
-                    Column {
-                        Text("Discover", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = SPrimary, letterSpacing = (-0.8).sp)
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(
+                            "Discover",
+                            fontSize = 21.sp, fontWeight = FontWeight.Bold,
+                            color = SPrimary, letterSpacing = (-0.5).sp
+                        )
                         if (swipesLeft > 0) {
                             Row(
-                                Modifier.scale(headerPulse)
+                                Modifier
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(SAccentSoft)
+                                    .background(SLikeSoft)
                                     .padding(horizontal = 8.dp, vertical = 2.dp),
                                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Box(Modifier.size(6.dp).clip(CircleShape).background(SLike))
-                                Text("$swipesLeft swipes left", fontSize = 10.sp, color = SAccent, fontWeight = FontWeight.SemiBold)
+                                Box(Modifier.size(5.dp).clip(CircleShape).background(SLike))
+                                Text("$swipesLeft left today", fontSize = 10.sp, color = SLike, fontWeight = FontWeight.Medium)
                             }
                         }
                     }
-                    // Right: Action buttons
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(
-                            Modifier.size(42.dp).shadow(4.dp, CircleShape, spotColor = SAccent.copy(0.12f))
-                                .clip(CircleShape).background(Color.White)
-                                .border(1.dp, SCardBorder, CircleShape)
+                            Modifier.size(40.dp)
+                                .shadow(3.dp, CircleShape, spotColor = SAccent.copy(0.08f))
+                                .clip(CircleShape).background(SCard)
+                                .border(0.8.dp, SCardBorder, CircleShape)
                                 .clickable { hapticH.performHapticFeedback(HapticFeedbackType.LongPress); onNavigateToMatches() },
                             contentAlignment = Alignment.Center
-                        ) {
-                            Image(painterResource(R.drawable.ic_swipe_connection), null, modifier = Modifier.size(22.dp))
-                        }
+                        ) { Image(painterResource(R.drawable.ic_swipe_connections_heart), null, modifier = Modifier.size(20.dp), colorFilter = ColorFilter.tint(SAccent, BlendMode.SrcIn)) }
                         Box(
-                            Modifier.size(42.dp).shadow(4.dp, CircleShape, spotColor = SAccent.copy(0.12f))
-                                .clip(CircleShape).background(Color.White)
-                                .border(1.dp, SCardBorder, CircleShape)
-                                .clickable {
-                                    hapticH.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    if (myProfile != null) { vm.loadProfileIntoForm(); isEditingProfile = true } else isCreatingProfile = true
-                                },
+                            Modifier.size(40.dp)
+                                .shadow(3.dp, CircleShape, spotColor = SAccent.copy(0.08f))
+                                .clip(CircleShape).background(SCard)
+                                .border(0.8.dp, SCardBorder, CircleShape)
+                                .clickable { hapticH.performHapticFeedback(HapticFeedbackType.LongPress); if (myProfile != null) { vm.loadProfileIntoForm(); isEditingProfile = true } else isCreatingProfile = true },
                             contentAlignment = Alignment.Center
-                        ) {
-                            Image(painterResource(R.drawable.ic_swipe_profile), null, modifier = Modifier.size(22.dp))
-                        }
+                        ) { Image(painterResource(R.drawable.ic_user_pen_swipe), null, modifier = Modifier.size(20.dp), colorFilter = ColorFilter.tint(SPrimary, BlendMode.SrcIn)) }
                     }
                 }
-                // ── Content ──
+                // -- Content --
                 when {
+                    loading        -> SwipeSkeletonLoader()
                     swipesLeft <= 0 -> SwipeLimitState()
-                    feed.isEmpty()  -> SwipeEmptyState(vm)
+                    feed.isEmpty() -> SwipeEmptyState(vm)
                     else -> {
-                        // ── Card stack ──
                         Box(
                             Modifier.weight(1f).fillMaxWidth()
-                                .background(Color.White)
+                                .background(SBg)
                                 .padding(horizontal = 16.dp, vertical = 12.dp),
                             contentAlignment = Alignment.Center
                         ) {
@@ -197,49 +225,43 @@ fun SwipeContent(
                                     profile      = profile,
                                     isTopCard    = stackIdx == 0,
                                     stackDepth   = stackIdx,
-                                    onSwipeRight = {
-                                        if (myProfile == null) isCreatingProfile = true
-                                        else vm.swipeRight(profile)
-                                    },
-                                    onSwipeLeft  = {
-                                        if (myProfile == null) isCreatingProfile = true
-                                        else vm.swipeLeft(profile)
-                                    },
+                                    onSwipeRight = { if (myProfile == null) isCreatingProfile = true else vm.swipeRight(profile) },
+                                    onSwipeLeft  = { if (myProfile == null) isCreatingProfile = true else vm.swipeLeft(profile) },
                                     onDragChange = { x -> activeDragX = x },
                                     onDragEnd    = { activeDragX = 0f }
                                 )
                             }
                         }
-                        // ── Gamified Action Buttons ──
+                        // ── Peaceful Action Buttons ──
                         val hapticBtn = LocalHapticFeedback.current
                         var passPressed   by remember { mutableStateOf(false) }
                         var likePressed   by remember { mutableStateOf(false) }
                         var starPressed   by remember { mutableStateOf(false) }
-                        val passScale by animateFloatAsState(if (passPressed) 0.82f else 1f, spring(Spring.DampingRatioMediumBouncy), label="ps")
-                        val likeScale by animateFloatAsState(if (likePressed) 0.82f else 1f, spring(Spring.DampingRatioMediumBouncy), label="ls")
-                        val starScale by animateFloatAsState(if (starPressed) 0.82f else 1f, spring(Spring.DampingRatioMediumBouncy), label="ss")
+                        val passScale by animateFloatAsState(if (passPressed) 0.84f else 1f, spring(Spring.DampingRatioMediumBouncy), label = "ps")
+                        val likeScale by animateFloatAsState(if (likePressed) 0.84f else 1f, spring(Spring.DampingRatioMediumBouncy), label = "ls")
+                        val starScale by animateFloatAsState(if (starPressed) 0.84f else 1f, spring(Spring.DampingRatioMediumBouncy), label = "ss")
                         LaunchedEffect(passPressed) { if (passPressed) { kotlinx.coroutines.delay(120); passPressed = false } }
                         LaunchedEffect(likePressed) { if (likePressed) { kotlinx.coroutines.delay(120); likePressed = false } }
                         LaunchedEffect(starPressed) { if (starPressed) { kotlinx.coroutines.delay(120); starPressed = false } }
-                        val starInf = rememberInfiniteTransition(label="sg")
-                        val starGlow by starInf.animateFloat(0.5f, 1f, infiniteRepeatable(tween(1200, easing = FastOutSlowInEasing), RepeatMode.Reverse), "sgv")
                         Row(
-                            Modifier.fillMaxWidth().background(Color.White)
+                            Modifier.fillMaxWidth()
+                                .background(SBg)
                                 .border(BorderStroke(0.5.dp, SCardBorder))
-                                .padding(horizontal = 20.dp, vertical = 18.dp),
+                                .padding(horizontal = 20.dp, vertical = 16.dp),
                             horizontalArrangement = Arrangement.SpaceEvenly,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Undo
-                            VeilBtn(size = 52.dp, bg = Color.White, shadow = SUndo.copy(0.10f), borderColor = SCardBorder, onClick = {}) {
-                                Icon(Icons.Rounded.Undo, null, tint = SUndo.copy(0.6f), modifier = Modifier.size(22.dp))
+                            // Undo — soft dusty blue
+                            VeilBtn(size = 48.dp, bg = SCard, shadow = SUndo.copy(0.08f), borderColor = SCardBorder, onClick = {}) {
+                                Icon(Icons.Rounded.Undo, null, tint = SUndo.copy(0.65f), modifier = Modifier.size(20.dp))
                             }
-                            // Pass
+                            // Pass — soft terracotta
                             Box(
-                                Modifier.size(62.dp).scale(passScale)
-                                    .shadow(8.dp, CircleShape, spotColor = SPass.copy(0.25f))
-                                    .clip(CircleShape).background(Color.White)
-                                    .border(2.dp, SPass.copy(0.4f), CircleShape)
+                                Modifier.size(58.dp).scale(passScale)
+                                    .shadow(6.dp, CircleShape, spotColor = SPass.copy(0.15f))
+                                    .clip(CircleShape)
+                                    .background(SPassSoft)
+                                    .border(1.5.dp, SPass.copy(0.35f), CircleShape)
                                     .clickable {
                                         passPressed = true
                                         hapticBtn.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -247,92 +269,35 @@ fun SwipeContent(
                                         else feed.firstOrNull()?.let { vm.swipeLeft(it) }
                                     },
                                 contentAlignment = Alignment.Center
-                            ) { Icon(Icons.Rounded.Close, null, tint = SPass, modifier = Modifier.size(28.dp)) }
-                            // Super like — shimmer streak + pulsing glow
-                            val shimInf = rememberInfiniteTransition(label = "starShim")
-                            // Diagonal shimmer X position sweeping across button
-                            val shimSweep by shimInf.animateFloat(
-                                -120f, 220f,
-                                infiniteRepeatable(
-                                    tween(1600, easing = FastOutSlowInEasing),
-                                    RepeatMode.Restart
-                                ), "shimSweep"
-                            )
-                            // Rotating outer ring
-                            val ringRot by shimInf.animateFloat(
-                                0f, 360f,
-                                infiniteRepeatable(tween(3000, easing = LinearEasing)),
-                                "ringRot"
-                            )
-                            // Shimmer brush — white diagonal streak
-                            val shimmerBrush = Brush.linearGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    Color.White.copy(alpha = 0.55f),
-                                    Color.Transparent
-                                ),
-                                start = androidx.compose.ui.geometry.Offset(shimSweep - 40f, 0f),
-                                end   = androidx.compose.ui.geometry.Offset(shimSweep + 40f, 120f)
-                            )
+                            ) { Icon(Icons.Rounded.Close, null, tint = SPass, modifier = Modifier.size(24.dp)) }
+                            // Compliment — soft plum sparkle
                             Box(
-                                Modifier.size(74.dp).scale(starScale),
+                                Modifier.size(68.dp).scale(starScale)
+                                    .shadow(8.dp, CircleShape, spotColor = SSuperLike.copy(0.18f))
+                                    .clip(CircleShape)
+                                    .background(
+                                        Brush.radialGradient(listOf(SSuperSoft, SSuperSoft.let {
+                                            if (_swipeDark) Color(0xFF221535) else Color(0xFFEDE5F5)
+                                        }))
+                                    )
+                                    .border(1.5.dp, SSuperLike.copy(0.40f), CircleShape)
+                                    .clickable {
+                                        starPressed = true
+                                        hapticBtn.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        if (myProfile == null) isCreatingProfile = true
+                                        else feed.firstOrNull()?.let { p -> complimentTarget = p; showComplimentDialog = true }
+                                    },
                                 contentAlignment = Alignment.Center
                             ) {
-                                // Rotating dashed-glow ring behind button
-                                Box(
-                                    Modifier
-                                        .size(74.dp)
-                                        .rotate(ringRot)
-                                        .clip(CircleShape)
-                                        .border(
-                                            width = 2.dp,
-                                            brush = Brush.sweepGradient(
-                                                listOf(
-                                                    Color.Transparent,
-                                                    Color(0xFFD8B4FE),
-                                                    Color.Transparent,
-                                                    Color(0xFF7C3AED),
-                                                    Color.Transparent
-                                                )
-                                            ),
-                                            shape = CircleShape
-                                        )
-                                )
-                                // Main button body
-                                Box(
-                                    Modifier
-                                        .size(70.dp)
-                                        .shadow(
-                                            elevation = (12 + (starGlow * 8).toInt()).dp,
-                                            shape = CircleShape,
-                                            spotColor = SSuperLike.copy(starGlow * 0.7f)
-                                        )
-                                        .clip(CircleShape)
-                                        .background(
-                                            Brush.radialGradient(
-                                                listOf(Color(0xFF9F67F7), SSuperLike, Color(0xFF5B21B6))
-                                            )
-                                        )
-                                        .border(1.5.dp, Color.White.copy(0.25f), CircleShape)
-                                        .clickable {
-                                            starPressed = true
-                                            hapticBtn.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            if (myProfile == null) isCreatingProfile = true
-                                            else feed.firstOrNull()?.let { p -> complimentTarget = p; showComplimentDialog = true }
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Rounded.Star, null, tint = Color.White, modifier = Modifier.size(30.dp))
-                                    // Shimmer streak overlay
-                                    Box(Modifier.fillMaxSize().background(shimmerBrush))
-                                }
+                                Icon(Icons.Rounded.AutoAwesome, null, tint = SSuperLike, modifier = Modifier.size(28.dp))
                             }
-                            // Like
+                            // Like — sage green
                             Box(
-                                Modifier.size(62.dp).scale(likeScale)
-                                    .shadow(8.dp, CircleShape, spotColor = SLike.copy(0.25f))
-                                    .clip(CircleShape).background(Color.White)
-                                    .border(2.dp, SLike.copy(0.4f), CircleShape)
+                                Modifier.size(58.dp).scale(likeScale)
+                                    .shadow(6.dp, CircleShape, spotColor = SLike.copy(0.18f))
+                                    .clip(CircleShape)
+                                    .background(SLikeSoft)
+                                    .border(1.5.dp, SLike.copy(0.40f), CircleShape)
                                     .clickable {
                                         likePressed = true
                                         hapticBtn.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -340,25 +305,35 @@ fun SwipeContent(
                                         else feed.firstOrNull()?.let { vm.swipeRight(it) }
                                     },
                                 contentAlignment = Alignment.Center
-                            ) { Icon(Icons.Rounded.Favorite, null, tint = SLike, modifier = Modifier.size(28.dp)) }
+                            ) { Icon(Icons.Rounded.Favorite, null, tint = SLike, modifier = Modifier.size(24.dp)) }
                         }
                     }
                 }
             }
+        } // end AnimatedVisibility (main swipe UI)
+
+        // ── Profile Setup — slides up from bottom ─────────────────────────────
+        AnimatedVisibility(
+            visible = inSetup,
+            enter   = slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(280)),
+            exit    = slideOutVertically(tween(360)) { it } + fadeOut(tween(260))
+        ) {
+            SwipeSetupInline(
+                vm        = vm,
+                isEditing = isEditingProfile,
+                onBack    = { isEditingProfile = false; isCreatingProfile = false }
+            )
         }
+
+        // ── Overlays (sit on top regardless of state) ─────────────────────────
         if (match != null && vm.isDemoMatch) {
             MatchOverlay(match = match!!, onDismiss = { vm.clearDemoMatch() })
         }
-        
-        // Compliment Dialog
         if (showComplimentDialog && complimentTarget != null) {
             ComplimentDialog(
                 profile       = complimentTarget!!,
                 cookieBalance = cookieBalance,
-                onDismiss = { 
-                    showComplimentDialog = false
-                    complimentTarget = null
-                },
+                onDismiss = { showComplimentDialog = false; complimentTarget = null },
                 onSend = { message ->
                     vm.sendCompliment(complimentTarget!!, message)
                     showComplimentDialog = false
@@ -366,8 +341,6 @@ fun SwipeContent(
                 }
             )
         }
-
-        // Not enough cookies alert
         if (showNoCookiesAlert) {
             NoCookiesAlert(onDismiss = { showNoCookiesAlert = false })
         }
@@ -403,7 +376,7 @@ private fun SwipeSetupInline(vm: SwipeViewModel, isEditing: Boolean = false, onB
             // ── Hero Banner (identity + avatar) ──
             Box(
                 Modifier.fillMaxWidth().height(200.dp)
-                    .background(Color.White)
+                    .background(SCard)
             ) {
                 // Back button
                 if (isEditing) {
@@ -997,43 +970,47 @@ private fun SwipeCard(
 
                 // Professional LIKE / NOPE stamps with better styling
                 if (isTopCard) {
-                    // LIKE stamp (top left)
+                    // LIKE stamp — softer sage stroke
                     Box(
                         Modifier
                             .align(Alignment.TopStart)
                             .padding(24.dp)
                             .rotate(-20f)
                             .alpha(if (animX > 0) stampAlpha else 0f)
-                            .scale(1f + stampAlpha * 0.1f)
-                            .border(4.dp, SLike, RoundedCornerShape(10.dp))
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .scale(1f + stampAlpha * 0.08f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(SLike.copy(0.12f))
+                            .border(2.5.dp, SLike.copy(0.8f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 14.dp, vertical = 7.dp)
                     ) {
                         Text(
-                            "LIKE",
+                            "CONNECT",
                             color = SLike,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 28.sp,
-                            letterSpacing = 3.sp
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            letterSpacing = 2.sp
                         )
                     }
-                    
-                    // NOPE stamp (top right)
+
+                    // NOPE stamp — soft terracotta
                     Box(
                         Modifier
                             .align(Alignment.TopEnd)
                             .padding(24.dp)
                             .rotate(20f)
                             .alpha(if (animX < 0) stampAlpha else 0f)
-                            .scale(1f + stampAlpha * 0.1f)
-                            .border(4.dp, SPass, RoundedCornerShape(10.dp))
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .scale(1f + stampAlpha * 0.08f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(SPass.copy(0.10f))
+                            .border(2.5.dp, SPass.copy(0.75f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 14.dp, vertical = 7.dp)
                     ) {
                         Text(
-                            "NOPE",
+                            "PASS",
                             color = SPass,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 28.sp,
-                            letterSpacing = 3.sp
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 22.sp,
+                            letterSpacing = 2.sp
                         )
                     }
                 }
@@ -1054,14 +1031,14 @@ private fun SwipeCard(
                         )
                 )
 
-                // Name + info overlay at bottom of photo
+                // Name + info overlay at bottom of photo — no verified badge
                 Column(
                     Modifier
                         .align(Alignment.BottomStart)
                         .padding(horizontal = 20.dp, vertical = 18.dp)
                 ) {
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
+                        verticalAlignment = Alignment.Bottom,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
@@ -1074,64 +1051,55 @@ private fun SwipeCard(
                         if (profile.age > 0) {
                             Text(
                                 "${profile.age}",
-                                fontSize = 24.sp,
-                                color = Color.White.copy(0.90f),
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                        Box(
-                            Modifier
-                                .size(20.dp)
-                                .clip(CircleShape)
-                                .background(SAccent),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Rounded.Check,
-                                null,
-                                tint = Color.White,
-                                modifier = Modifier.size(12.dp)
+                                fontSize = 20.sp,
+                                color = Color.White.copy(0.75f),
+                                fontWeight = FontWeight.Normal,
+                                modifier = Modifier.padding(bottom = 3.dp)
                             )
                         }
                     }
-                    
+
                     val loc = listOf(profile.state, profile.country).filter { it.isNotBlank() }.joinToString(", ")
                     if (loc.isNotBlank()) {
                         Row(
-                            Modifier.padding(top = 4.dp),
+                            Modifier.padding(top = 5.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Icon(
                                 Icons.Rounded.LocationOn,
                                 null,
-                                tint = Color.White.copy(0.75f),
-                                modifier = Modifier.size(14.dp)
+                                tint = Color.White.copy(0.65f),
+                                modifier = Modifier.size(13.dp)
                             )
                             Text(
                                 loc,
-                                fontSize = 13.sp,
-                                color = Color.White.copy(0.75f)
+                                fontSize = 12.sp,
+                                color = Color.White.copy(0.65f)
                             )
                         }
                     }
-                    
+
                     if (profile.availableTonight.isNotBlank()) {
                         Row(
-                            Modifier.padding(top = 10.dp),
+                            Modifier
+                                .padding(top = 8.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(SLike.copy(0.20f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             Box(
                                 Modifier
-                                    .size(9.dp)
+                                    .size(5.dp)
                                     .clip(CircleShape)
-                                    .background(Color(0xFF22C55E))
+                                    .background(SLike)
                             )
                             Text(
-                                "Active tonight",
-                                fontSize = 12.sp,
-                                color = Color.White.copy(0.88f),
+                                "Free tonight · ${profile.availableTonight}",
+                                fontSize = 11.sp,
+                                color = Color.White.copy(0.90f),
                                 fontWeight = FontWeight.Medium
                             )
                         }
@@ -1139,104 +1107,203 @@ private fun SwipeCard(
                 }
             }
 
-            // Personality - clean, airy layout
+            // ── Profile details ────────────────────────────────────────────────
+            val cardBg      = if (_swipeDark) Color(0xFF0F0F14) else Color(0xFFFBF8F4)  // warm parchment
+            val sectionBg   = if (_swipeDark) Color(0xFF17171E) else Color(0xFFFFFFFF)  // card white
+            val dividerColor = if (_swipeDark) Color(0xFF2C2C34) else Color(0xFFE8E3DC) // soft border
+
             Column(
-                Modifier.fillMaxWidth().background(Color.White).padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 32.dp),
+                Modifier
+                    .fillMaxWidth()
+                    .background(cardBg)
+                    .padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 36.dp),
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
-                if (profile.comfortWhen.isNotBlank())
-                    LightInfoSection(emoji = "🛡", label = "COMFORTABLE WHEN", text = profile.comfortWhen)
-                if (profile.perfectEvening.isNotBlank())
-                    LightInfoSection(emoji = "🌙", label = "PERFECT EVENING", text = profile.perfectEvening)
-                if (profile.openUpWhen.isNotBlank())
-                    LightInfoSection(emoji = "💡", label = "OPENS UP WHEN", text = profile.openUpWhen)
-                if (profile.thingsIAvoid.isNotBlank())
-                    LightInfoSection(emoji = "🚫", label = "AVOIDS", text = profile.thingsIAvoid)
 
+                // ── Intro questions ─────────────────────────────────────────────
+                if (profile.comfortWhen.isNotBlank() || profile.perfectEvening.isNotBlank() ||
+                    profile.openUpWhen.isNotBlank() || profile.thingsIAvoid.isNotBlank()) {
+
+                    Column(
+                        Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(sectionBg)
+                            .border(1.dp, dividerColor, RoundedCornerShape(16.dp))
+                    ) {
+                        listOfNotNull(
+                            if (profile.comfortWhen.isNotBlank())  ("Comfortable when" to profile.comfortWhen) else null,
+                            if (profile.perfectEvening.isNotBlank()) ("Perfect evening" to profile.perfectEvening) else null,
+                            if (profile.openUpWhen.isNotBlank())   ("Opens up when" to profile.openUpWhen) else null,
+                            if (profile.thingsIAvoid.isNotBlank()) ("Tends to avoid" to profile.thingsIAvoid) else null
+                        ).forEachIndexed { idx, (label, text) ->
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                                verticalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Text(
+                                    label.uppercase(),
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = SMuted,
+                                    letterSpacing = 0.8.sp
+                                )
+                                Text(
+                                    text,
+                                    fontSize = 14.sp,
+                                    color = SPrimary,
+                                    lineHeight = 22.sp
+                                )
+                            }
+                            if (idx < 3) Box(Modifier.fillMaxWidth().height(0.5.dp).background(dividerColor))
+                        }
+                    }
+                }
+
+                // ── Ask me about ────────────────────────────────────────────────
                 if (profile.askMeAbout.isNotBlank()) {
-                    Spacer(Modifier.height(20.dp))
-                    Box(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                    Spacer(Modifier.height(12.dp))
+                    Column(
+                        Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
                             .background(SAccentSoft)
-                            .border(1.dp, SAccent.copy(0.20f), RoundedCornerShape(16.dp))
-                            .padding(18.dp)
+                            .border(1.dp, SAccent.copy(0.15f), RoundedCornerShape(16.dp))
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("◎  ASK ME ABOUT", fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                                color = SAccent, letterSpacing = 1.sp)
-                            Text("\"${profile.askMeAbout}\"", fontSize = 14.sp,
-                                color = SPrimary, lineHeight = 21.sp, fontWeight = FontWeight.Normal)
-                        }
+                        Text(
+                            "Ask me about",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = SAccent,
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            "“${profile.askMeAbout}”",
+                            fontSize = 14.sp,
+                            color = SPrimary,
+                            lineHeight = 21.sp
+                        )
                     }
                 }
 
+                // ── Talk for hours ──────────────────────────────────────────────
                 if (profile.talkHoursAbout.isNotBlank()) {
-                    Spacer(Modifier.height(12.dp))
-                    Box(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                    Spacer(Modifier.height(10.dp))
+                    Column(
+                        Modifier.fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
                             .background(SGoldSoft)
-                            .border(1.dp, SGold.copy(0.20f), RoundedCornerShape(16.dp))
-                            .padding(18.dp)
+                            .border(1.dp, SGold.copy(0.15f), RoundedCornerShape(16.dp))
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("✨  HOURS ON TOPIC", fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                                color = SGold.copy(0.85f), letterSpacing = 1.sp)
-                            Text(profile.talkHoursAbout, fontSize = 14.sp,
-                                color = SPrimary, lineHeight = 21.sp, fontWeight = FontWeight.Normal)
-                        }
+                        Text(
+                            "Hours on topic",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = SGold.copy(0.85f),
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            profile.talkHoursAbout,
+                            fontSize = 14.sp,
+                            color = SPrimary,
+                            lineHeight = 21.sp
+                        )
                     }
                 }
 
+                // ── Vibe tags ───────────────────────────────────────────────────
                 if (profile.introvertTags.isNotEmpty()) {
-                    Spacer(Modifier.height(24.dp))
-                    Text("VIBE TAGS", fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                        color = SSecondary, letterSpacing = 1.sp)
-                    Spacer(Modifier.height(12.dp))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Spacer(Modifier.height(20.dp))
+                    Text(
+                        "Personality",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = SMuted,
+                        letterSpacing = 0.3.sp,
+                        modifier = Modifier.padding(start = 2.dp, bottom = 10.dp)
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
                         profile.introvertTags.forEach { tag ->
                             Box(
-                                Modifier.clip(RoundedCornerShape(20.dp))
-                                    .background(SAccentSoft)
-                                    .border(1.dp, SAccent.copy(0.25f), RoundedCornerShape(20.dp))
-                                    .padding(horizontal = 14.dp, vertical = 8.dp)
-                            ) { Text(tag, fontSize = 13.sp, color = SAccent, fontWeight = FontWeight.Medium) }
+                                Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(sectionBg)
+                                    .border(1.dp, dividerColor, RoundedCornerShape(20.dp))
+                                    .padding(horizontal = 13.dp, vertical = 7.dp)
+                            ) {
+                                Text(tag, fontSize = 12.sp, color = SSecondary, fontWeight = FontWeight.Medium)
+                            }
                         }
                     }
                 }
 
+                // ── Into (hobbies) ──────────────────────────────────────────────
                 if (profile.hobbies.isNotEmpty()) {
-                    Spacer(Modifier.height(24.dp))
-                    Text("INTO", fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                        color = SSecondary, letterSpacing = 1.sp)
-                    Spacer(Modifier.height(12.dp))
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Spacer(Modifier.height(20.dp))
+                    Text(
+                        "Interests",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = SMuted,
+                        letterSpacing = 0.3.sp,
+                        modifier = Modifier.padding(start = 2.dp, bottom = 10.dp)
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
                         profile.hobbies.forEach { h ->
                             Box(
-                                Modifier.clip(RoundedCornerShape(20.dp))
-                                    .background(SBg)
-                                    .border(1.dp, SCardBorder, RoundedCornerShape(20.dp))
-                                    .padding(horizontal = 14.dp, vertical = 8.dp)
-                            ) { Text(h, fontSize = 13.sp, color = SSecondary, fontWeight = FontWeight.Normal) }
+                                Modifier
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(SAccentSoft)
+                                    .border(1.dp, SAccent.copy(0.18f), RoundedCornerShape(20.dp))
+                                    .padding(horizontal = 13.dp, vertical = 7.dp)
+                            ) {
+                                Text(h, fontSize = 12.sp, color = SAccent.copy(0.85f), fontWeight = FontWeight.Medium)
+                            }
                         }
                     }
                 }
 
+                // ── Free time slots ─────────────────────────────────────────────
                 if (profile.preferredTimeSlots.isNotEmpty()) {
-                    Spacer(Modifier.height(24.dp))
-                    Text("FREE TO CHAT", fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                        color = SSecondary, letterSpacing = 1.sp)
-                    Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Spacer(Modifier.height(20.dp))
+                    Text(
+                        "Usually free",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = SMuted,
+                        letterSpacing = 0.3.sp,
+                        modifier = Modifier.padding(start = 2.dp, bottom = 10.dp)
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         for (i in 0 until minOf(profile.preferredTimeSlots.size, 4)) {
                             Box(
-                                Modifier.clip(RoundedCornerShape(14.dp))
-                                    .background(SBg)
-                                    .border(1.dp, SCardBorder, RoundedCornerShape(14.dp))
-                                    .padding(horizontal = 14.dp, vertical = 9.dp)
-                            ) { Text(profile.preferredTimeSlots[i], fontSize = 12.sp, color = SPrimary, fontWeight = FontWeight.Medium) }
+                                Modifier
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(SGoldSoft)
+                                    .border(1.dp, SGold.copy(0.20f), RoundedCornerShape(12.dp))
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    profile.preferredTimeSlots[i],
+                                    fontSize = 12.sp,
+                                    color = SGold.copy(0.85f),
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
                     }
                 }
+
                 Spacer(Modifier.height(8.dp))
             }
         }
@@ -1326,36 +1393,126 @@ private fun veilGradient(uid: String): Pair<Color, Color> {
 }
 
 @Composable private fun SwipeEmptyState(vm: SwipeViewModel) {
+    val lottieComp by rememberLottieComposition(LottieCompositionSpec.Asset("Allcaughup.lottie"))
+    val lottieProg by animateLottieCompositionAsState(composition = lottieComp, iterations = LottieConstants.IterateForever, speed = 0.9f)
     val inf = rememberInfiniteTransition(label = "es")
-    val sc by inf.animateFloat(0.92f, 1f, infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing), RepeatMode.Reverse), "esc")
-    val glow by inf.animateFloat(0.15f, 0.35f, infiniteRepeatable(tween(1800), RepeatMode.Reverse), "esg")
+    val floatY  by inf.animateFloat(-6f, 6f, infiniteRepeatable(tween(3000, easing = FastOutSlowInEasing), RepeatMode.Reverse), "fy")
+    val glowA   by inf.animateFloat(0.04f, 0.14f, infiniteRepeatable(tween(2200), RepeatMode.Reverse), "ga")
+    val dotA    by inf.animateFloat(0.3f, 1f, infiniteRepeatable(tween(800, easing = FastOutSlowInEasing), RepeatMode.Reverse), "da")
+
     Column(
-        Modifier.fillMaxSize().padding(40.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp)
+            .padding(top = 32.dp, bottom = 40.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // ── Lottie — floating, no card box ─────────────────────────────────
         Box(
-            Modifier.size(90.dp).scale(sc)
-                .shadow(16.dp, CircleShape, spotColor = SAccent.copy(glow))
-                .clip(CircleShape)
-                .background(Brush.radialGradient(listOf(SAccentSoft, Color.White)))
-                .border(2.dp, SAccent.copy(0.25f), CircleShape),
+            Modifier
+                .offset(y = floatY.dp)
+                .size(200.dp)
+                .shadow(20.dp, CircleShape, spotColor = SAccent.copy(glowA), clip = false),
             contentAlignment = Alignment.Center
-        ) { Icon(Icons.Rounded.SearchOff, null, tint = SAccent, modifier = Modifier.size(36.dp)) }
-        Spacer(Modifier.height(24.dp))
-        Text("All caught up", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = SPrimary, textAlign = TextAlign.Center, letterSpacing = (-0.5).sp)
-        Spacer(Modifier.height(8.dp))
-        Text("No new profiles right now.\nCheck back soon, the queue moves fast.", fontSize = 13.sp, color = SSecondary, textAlign = TextAlign.Center, lineHeight = 20.sp)
-        Spacer(Modifier.height(28.dp))
-        Button(
-            onClick = { vm.forceSeedAndReload() },
-            shape  = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = SAccent),
-            modifier = Modifier.height(48.dp)
         ) {
-            Icon(Icons.Rounded.Refresh, null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("Refresh feed", fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            LottieAnimation(
+                composition = lottieComp,
+                progress = { lottieProg },
+                modifier = Modifier.size(200.dp)
+            )
+        }
+
+        Spacer(Modifier.height(32.dp))
+
+        // ── Title ───────────────────────────────────────────────────────────
+        Text(
+            "All Caught Up",
+            fontSize = 30.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = SPrimary,
+            letterSpacing = (-1.2).sp,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "You've explored everyone for now.\nNew introverts join every day.",
+            fontSize = 13.sp,
+            color = SSecondary,
+            textAlign = TextAlign.Center,
+            lineHeight = 20.sp
+        )
+
+        Spacer(Modifier.height(28.dp))
+
+        // ── Live dot + "Refreshing automatically" status ────────────────────
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Box(Modifier.size(7.dp).clip(CircleShape).background(SLike.copy(dotA)))
+            Text(
+                "Checking for new profiles automatically",
+                fontSize = 11.sp,
+                color = SMuted,
+                fontWeight = FontWeight.Medium
+            )
+        }
+
+        Spacer(Modifier.height(28.dp))
+
+        // ── Decorative divider ──────────────────────────────────────────────
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(Modifier.weight(1f).height(0.5.dp).background(SCardBorder))
+            Text("WHILE YOU WAIT", fontSize = 9.sp, color = SMuted, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.8.sp)
+            Box(Modifier.weight(1f).height(0.5.dp).background(SCardBorder))
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ── What's next card ────────────────────────────────────────────────
+        val actions = listOf(
+            Triple(Icons.Rounded.Send,         "Message a connection",   "Break the ice in Slow Chat"),
+            Triple(Icons.Rounded.Star,          "Send a compliment",      "Stand out with a kind note"),
+            Triple(Icons.Rounded.AccountCircle, "Update your profile",    "Get discovered by more people")
+        )
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(SCard)
+                .border(1.dp, SCardBorder, RoundedCornerShape(20.dp))
+                .padding(vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            actions.forEachIndexed { idx, (icon, title, sub) ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Box(
+                        Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(SAccentSoft),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(icon, null, tint = SAccent, modifier = Modifier.size(17.dp))
+                    }
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = SPrimary)
+                        Text(sub, fontSize = 11.sp, color = SSecondary)
+                    }
+                    Icon(Icons.Rounded.KeyboardArrowRight, null, tint = SMuted, modifier = Modifier.size(16.dp))
+                }
+                if (idx < actions.size - 1) {
+                    Box(Modifier.fillMaxWidth().padding(start = 68.dp).height(0.5.dp).background(SCardBorder))
+                }
+            }
         }
     }
 }
@@ -1404,7 +1561,7 @@ private fun MatchOverlay(match: SwipeMatch, onDismiss: () -> Unit) {
     ) {
         Box(
             Modifier.fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.92f))
+                .background(Color.Black.copy(alpha = 0.80f))
                 .clickable(enabled = false, onClick = {}),
             contentAlignment = Alignment.Center
         ) {
@@ -1413,57 +1570,65 @@ private fun MatchOverlay(match: SwipeMatch, onDismiss: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.padding(32.dp)
             ) {
-                // Pulsing ring around avatars
+                // Soft pulsing ring around avatars
                 Box(contentAlignment = Alignment.Center) {
-                    Box(Modifier.size(220.dp).scale(ringPulse).clip(CircleShape)
-                        .background(SLike.copy(glowAlpha * 0.12f))
-                        .border(1.5.dp, SLike.copy(glowAlpha * 0.4f), CircleShape))
+                    Box(
+                        Modifier.size(200.dp).scale(ringPulse).clip(CircleShape)
+                            .background(SLike.copy(glowAlpha * 0.10f))
+                            .border(1.dp, SLike.copy(glowAlpha * 0.35f), CircleShape)
+                    )
                     Row(
                         horizontalArrangement = Arrangement.spacedBy((-22).dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
-                            Modifier.size(110.dp).shadow(16.dp, CircleShape, spotColor = SLike.copy(0.4f))
+                            Modifier.size(105.dp)
+                                .shadow(12.dp, CircleShape, spotColor = SLike.copy(0.25f))
                                 .clip(CircleShape)
                                 .background(Brush.verticalGradient(listOf(theirGradient.first, theirGradient.second)))
-                                .border(3.dp, SLike, CircleShape),
+                                .border(2.5.dp, SLike.copy(0.7f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             if (match.photoB.isNotBlank()) {
                                 coil.compose.AsyncImage(match.photoB, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                             } else {
-                                Text(match.aliasB.firstOrNull()?.uppercaseChar()?.toString() ?: "?", fontSize = 40.sp, fontWeight = FontWeight.Black, color = Color.White)
+                                Text(match.aliasB.firstOrNull()?.uppercaseChar()?.toString() ?: "?", fontSize = 38.sp, fontWeight = FontWeight.Bold, color = Color.White)
                             }
                         }
                         Box(
-                            Modifier.size(110.dp).shadow(16.dp, CircleShape, spotColor = SAccent.copy(0.4f)).zIndex(1f)
+                            Modifier.size(105.dp)
+                                .shadow(12.dp, CircleShape, spotColor = SAccent.copy(0.25f)).zIndex(1f)
                                 .clip(CircleShape)
                                 .background(Brush.verticalGradient(listOf(myGradient.first, myGradient.second)))
-                                .border(3.dp, SAccent, CircleShape),
+                                .border(2.5.dp, SAccent.copy(0.7f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             if (match.photoA.isNotBlank()) {
                                 coil.compose.AsyncImage(match.photoA, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                             } else {
-                                Text(match.aliasA.firstOrNull()?.uppercaseChar()?.toString() ?: "?", fontSize = 40.sp, fontWeight = FontWeight.Black, color = Color.White)
+                                Text(match.aliasA.firstOrNull()?.uppercaseChar()?.toString() ?: "?", fontSize = 38.sp, fontWeight = FontWeight.Bold, color = Color.White)
                             }
                         }
                     }
                 }
-                Text("It's a Match!", fontSize = 32.sp, fontWeight = FontWeight.Black, color = Color.White, textAlign = TextAlign.Center, letterSpacing = (-1).sp)
-                Text("You and ${match.aliasB} vibe.", fontSize = 16.sp, color = Color.White.copy(0.80f), textAlign = TextAlign.Center)
-                Text("A private chat unlocks when you both connect.", fontSize = 12.sp, color = Color.White.copy(0.45f), textAlign = TextAlign.Center, lineHeight = 18.sp)
+                // Soft sparkle icon above title
+                Icon(Icons.Rounded.AutoAwesome, null, tint = SLike.copy(0.85f), modifier = Modifier.size(22.dp))
+                Text("It's a Connection!", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color.White, textAlign = TextAlign.Center, letterSpacing = (-0.5).sp)
+                Text("You and ${match.aliasB} resonated.", fontSize = 15.sp, color = Color.White.copy(0.75f), textAlign = TextAlign.Center)
+                Text("A private chat unlocks when you both connect.", fontSize = 12.sp, color = Color.White.copy(0.40f), textAlign = TextAlign.Center, lineHeight = 18.sp)
                 Spacer(Modifier.height(4.dp))
                 Button(
                     onClick = onDismiss,
                     shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = SLike),
-                    modifier = Modifier.fillMaxWidth(0.70f).height(52.dp),
-                    elevation = ButtonDefaults.buttonElevation(8.dp)
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = SLike
+                    ),
+                    modifier = Modifier.fillMaxWidth(0.68f).height(50.dp),
+                    elevation = ButtonDefaults.buttonElevation(4.dp)
                 ) {
-                    Icon(Icons.Rounded.Favorite, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Rounded.Favorite, null, tint = Color.White, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("Keep swiping", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                    Text("Keep exploring", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                 }
             }
         }
@@ -1551,23 +1716,33 @@ private fun ComplimentDialog(
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(if (canAfford) Color(0xFFFFFBEB) else Color(0xFFFEF2F2))
+                    .background(if (canAfford) SGoldSoft else SPassSoft)
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment     = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("🍪", fontSize = 18.sp)
+                Box(
+                    Modifier.size(32.dp).clip(RoundedCornerShape(8.dp))
+                        .background(if (canAfford) SGoldSoft else SPassSoft),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Rounded.Star, null,
+                        tint = if (canAfford) SGold else SPass,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
                 Column {
                     Text(
                         "$cost cookies",
                         fontSize   = 13.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color      = if (canAfford) Color(0xFF92400E) else SPass
+                        color      = if (canAfford) SGold else SPass
                     )
                     Text(
                         if (cookieBalance >= 0) "Balance: $cookieBalance" else "Checking…",
                         fontSize = 11.sp,
-                        color    = if (canAfford) Color(0xFFB45309) else SPass.copy(0.75f)
+                        color    = if (canAfford) SGold.copy(0.70f) else SPass.copy(0.65f)
                     )
                 }
                 Spacer(Modifier.weight(1f))
@@ -1683,7 +1858,7 @@ private fun NoCookiesAlert(onDismiss: () -> Unit) {
     Box(
         Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(0.65f))
+            .background(Color.Black.copy(0.55f))
             .clickable(enabled = false, onClick = {}),
         contentAlignment = Alignment.BottomCenter
     ) {
@@ -1691,21 +1866,30 @@ private fun NoCookiesAlert(onDismiss: () -> Unit) {
             Modifier
                 .fillMaxWidth()
                 .clip(androidx.compose.foundation.shape.RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-                .background(Color.White)
+                .background(SBg)
+                .border(BorderStroke(0.5.dp, SCardBorder), androidx.compose.foundation.shape.RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                 .padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("🍪", fontSize = 40.sp)
+            // Handle
+            Box(Modifier.width(40.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(SCardBorder))
+            // Icon instead of emoji
+            Box(
+                Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(SGoldSoft),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Rounded.Star, null, tint = SGold, modifier = Modifier.size(26.dp))
+            }
             Text(
                 "Not Enough Cookies",
-                fontSize = 20.sp,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = SPrimary
             )
             Text(
                 "You need at least 15 cookies to send a compliment.\nVisit the Cookie Store to top up!",
-                fontSize = 14.sp,
+                fontSize = 13.sp,
                 color = SSecondary,
                 textAlign = TextAlign.Center,
                 lineHeight = 20.sp
@@ -1713,11 +1897,11 @@ private fun NoCookiesAlert(onDismiss: () -> Unit) {
             Spacer(Modifier.height(4.dp))
             Button(
                 onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
+                modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = SSuperLike)
+                colors = ButtonDefaults.buttonColors(containerColor = SAccent)
             ) {
-                Text("Got it", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                Text("Got it", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
             }
             Spacer(Modifier.height(8.dp))
         }
@@ -1811,7 +1995,7 @@ private fun SwipeSkeletonLoader() {
                 )
             }
         }
-        Divider(color = SCardBorder, thickness = 0.5.dp)
+        HorizontalDivider(color = SCardBorder, thickness = 0.5.dp)
 
         // Card skeleton
         Box(

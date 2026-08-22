@@ -527,6 +527,61 @@ object VeilNotifier {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    //  Whisper Room invite notifications
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Invite specific users to a Whisper room (personal), or broadcast to all
+     * app users if [targetUids] is empty.
+     *
+     * Notification data payload includes type="whisper_invite" and roomId so that
+     * VeilMessagingService can deep-link the tap directly into the room.
+     *
+     * @param roomId      The Firestore ID of the voice room
+     * @param roomTitle   Display name of the room
+     * @param hostAlias   Alias of the host sending the invite
+     * @param targetUids  Specific UIDs to invite; pass empty list for broadcast
+     * @param db          Firestore instance
+     */
+    suspend fun notifyWhisperRoomInvite(
+        roomId     : String,
+        roomTitle  : String,
+        hostAlias  : String,
+        targetUids : List<String>,
+        db         : FirebaseFirestore
+    ) {
+        val data = mapOf(
+            "type"   to "whisper_invite",
+            "roomId" to roomId
+        )
+
+        if (targetUids.isEmpty()) {
+            // ── Broadcast to all subscribers ──────────────────────────────────
+            val payload = buildPayload(
+                title  = "A voice room just opened on Veil",
+                body   = "${hostAlias} started a Whisper room — join before it fills up.",
+                data   = data,
+                urgent = true
+            ).apply {
+                put("included_segments", JSONArray(listOf("Total Subscriptions")))
+            }
+            sendRaw(payload)
+            Log.d(TAG, "notifyWhisperRoomInvite: broadcast sent for room $roomId")
+        } else {
+            // ── Personal invites to selected UIDs ─────────────────────────────
+            val subIds = getSubIds(db, targetUids)
+            val title  = "${hostAlias} invited you to a Whisper room"
+            val body   = "\"${roomTitle}\" is live right now — tap to join."
+            if (subIds.isNotEmpty()) {
+                sendToSubscriptionIds(ids = subIds, title = title, body = body, data = data, urgent = true)
+            } else {
+                sendToExternalIds(uids = targetUids, title = title, body = body, data = data, urgent = true)
+            }
+            Log.d(TAG, "notifyWhisperRoomInvite: personal invite sent to ${targetUids.size} users for room $roomId")
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     //  DM / Connection Room message notification
     //  WhatsApp-style: tapping the notification opens the exact chat thread.
     // ─────────────────────────────────────────────────────────────────────────
@@ -544,6 +599,7 @@ object VeilNotifier {
     suspend fun sendDmMessage(
         toUid      : String,
         fromAlias  : String,
+        fromUid    : String,   // sender's UID — needed by reply receiver to route reply back
         matchId    : String,
         messageText: String
     ) {
@@ -553,7 +609,8 @@ object VeilNotifier {
         val body  = messageText.take(80).let { if (messageText.length > 80) "$it…" else it }
         val data  = mapOf(
             "type"    to "dm_message",
-            "matchId" to matchId
+            "matchId" to matchId,
+            "fromUid" to fromUid
         )
         if (subId != null) {
             sendToSubscriptionIds(

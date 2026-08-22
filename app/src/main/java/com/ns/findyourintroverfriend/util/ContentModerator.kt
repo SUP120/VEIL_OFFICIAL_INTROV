@@ -28,11 +28,17 @@ object ContentModerator {
 
     // ── Phone number patterns ────────────────────────────────────────────────
     private val phoneRegex = Regex(
-        """(\+?\d[\d\s\-]{7,14}\d)""" +
-        """|(\d{3}[\s\-]?\d{3}[\s\-]?\d{4})""" +
-        """|(\d{4}[\s\-]?\d{3}[\s\-]?\d{3})""" +
-        """|(\d{5}\s?\d{5})"""
+        """(?:(?:\+|00)?91[\s\-]?)?[6-9]\d{9}""" +      // Indian: +91 XXXXXXXXXX or 9XXXXXXXXX
+        """|(\+?\d[\d\s\-]{8,14}\d)""" +                 // International long form
+        """|(\d{3}[\s\-]?\d{3}[\s\-]?\d{4})""" +         // XXX-XXX-XXXX
+        """|(\d{5}[\s]?\d{5})"""                          // XXXXX XXXXX
     )
+
+    /**
+     * Replaces any detected phone numbers in [text] with **********
+     * Use this to silently sanitize outgoing messages rather than blocking them.
+     */
+    fun maskPhoneNumbers(text: String): String = phoneRegex.replace(text, "**********")
 
     // ── Social media patterns ────────────────────────────────────────────────
     private val socialPatterns = listOf(
@@ -49,6 +55,10 @@ object ContentModerator {
         Regex("""(?i)@[a-zA-Z0-9_.]{2,30}"""),
         Regex("""(?i)\b(dm\s+me|add\s+me|follow\s+me|text\s+me|ping me)\b"""),
         Regex("""(?i)\b(my id|mera id|apna id|id do|id dena|id loge)\b"""),
+        // Phone-sharing intents
+        Regex("""(?i)\b(my number|mera number|apna number|number do|call me|call karo|call kr)\b"""),
+        Regex("""(?i)\b(whatsapp (pe|par|me)|wa pe|wa par)\b"""),
+        Regex("""(?i)\b(contact (me|karo|kare)|bahar baat|bahar milte)\b"""),
     )
 
     // ── Sexual / explicit keywords ───────────────────────────────────────────

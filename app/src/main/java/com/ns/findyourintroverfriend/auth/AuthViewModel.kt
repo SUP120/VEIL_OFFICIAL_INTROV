@@ -156,6 +156,29 @@ class AuthViewModel : ViewModel() {
 
     fun resetState() { _state.value = AuthUiState.Idle }
 
+    // ── Reviewer bypass: Email/Password sign-in (hidden from normal users) ────────
+    // Triggered by long-pressing the Terms link on AuthScreen.
+    // Credentials are provided in Play Console App Access instructions only.
+    fun signInWithEmail(email: String, password: String) {
+        viewModelScope.launch {
+            _state.value = AuthUiState.Loading
+            try {
+                auth.signInWithEmailAndPassword(email, password).await()
+                val uid = auth.currentUser?.uid
+                    ?: throw Exception("No user after email sign-in")
+                val doc      = db.collection("users").document(uid).get().await()
+                val complete = doc.exists() && doc.getBoolean("profileComplete") == true
+                _state.value = AuthUiState.Success(needsProfile = !complete)
+            } catch (e: Exception) {
+                Log.e(TAG, "Reviewer email sign-in failed", e)
+                _state.value = AuthUiState.Error(
+                    message = "Invalid reviewer credentials.",
+                    code    = -1
+                )
+            }
+        }
+    }
+
     fun currentUserSignedIn() = auth.currentUser != null
 
     fun checkExistingSession() {

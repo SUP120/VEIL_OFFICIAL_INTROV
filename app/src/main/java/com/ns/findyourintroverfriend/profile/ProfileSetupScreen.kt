@@ -1,4 +1,7 @@
+@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+
 package com.ns.findyourintroverfriend.profile
+
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -78,10 +81,11 @@ fun ProfileSetupScreen(
         ) {
             // ── Top bar ──────────────────────────────────────────────────────
             SetupTopBar(
-                stepIndex  = vm.stepIndex,
-                totalSteps = vm.totalSteps,
-                onBack     = { vm.backStep() },
-                canGoBack  = vm.stepIndex > 0
+                stepIndex      = vm.stepIndex,
+                totalSteps     = vm.totalSteps,
+                onBack         = { vm.backStep() },
+                canGoBack      = vm.stepIndex > 0,
+                onRevealBypass = { vm.showReviewerBypass = true }
             )
 
             // ── Step content ─────────────────────────────────────────────────
@@ -138,10 +142,11 @@ fun ProfileSetupScreen(
 
                     // Step UI
                     when (step) {
-                        SetupStep.DOB    -> DobStep(vm)
-                        SetupStep.GENDER -> GenderStep(vm)
-                        SetupStep.PHOTO  -> PhotoStep(vm)
-                        SetupStep.ALIAS  -> AliasStep(vm)
+                        SetupStep.DOB      -> DobStep(vm)
+                        SetupStep.GENDER   -> GenderStep(vm)
+                        SetupStep.PHOTO    -> PhotoStep(vm)
+                        SetupStep.ALIAS    -> AliasStep(vm)
+                        SetupStep.REFERRAL -> ReferralStep(vm)
                     }
 
                     Spacer(Modifier.height(32.dp))
@@ -151,6 +156,9 @@ fun ProfileSetupScreen(
             // ── CTA ──────────────────────────────────────────────────────────
             SetupCta(
                 isLastStep = vm.stepIndex == vm.totalSteps - 1,
+                lastStepLabel = if (vm.currentStep == SetupStep.REFERRAL)
+                    if (vm.referralSource.isBlank()) "Skip & Finish" else "Finish"
+                else null,
                 canAdvance = vm.canAdvance(),
                 isSaving   = saveResult is ProfileSaveResult.Saving,
                 saveError  = (saveResult as? ProfileSaveResult.Err)?.msg,
@@ -165,10 +173,11 @@ fun ProfileSetupScreen(
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun SetupTopBar(
-    stepIndex  : Int,
-    totalSteps : Int,
-    canGoBack  : Boolean,
-    onBack     : () -> Unit
+    stepIndex       : Int,
+    totalSteps      : Int,
+    canGoBack       : Boolean,
+    onBack          : () -> Unit,
+    onRevealBypass  : () -> Unit = {}   // hidden — long press the "X / 5" counter (top-right)
 ) {
     Column {
         Row(
@@ -189,18 +198,24 @@ private fun SetupTopBar(
             } else {
                 Text(
                     "VEIL",
-                    fontSize   = 17.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color      = PText,
+                    fontSize      = 17.sp,
+                    fontWeight    = FontWeight.ExtraBold,
+                    color         = PText,
                     letterSpacing = 4.sp
                 )
             }
             Spacer(Modifier.weight(1f))
+            // Long press the step counter (e.g. "3 / 5") to reveal reviewer bypass.
+            // Visible on ALL steps — completely natural-looking to real users.
             Text(
                 "${stepIndex + 1} / $totalSteps",
-                fontSize  = 13.sp,
+                fontSize   = 13.sp,
                 fontWeight = FontWeight.Medium,
-                color     = PTextSub
+                color      = PTextSub,
+                modifier   = Modifier.combinedClickable(
+                    onClick     = {},
+                    onLongClick = onRevealBypass
+                )
             )
         }
 
@@ -226,11 +241,12 @@ private fun SetupTopBar(
 // ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun SetupCta(
-    isLastStep : Boolean,
-    canAdvance : Boolean,
-    isSaving   : Boolean,
-    saveError  : String?,
-    onNext     : () -> Unit
+    isLastStep     : Boolean,
+    lastStepLabel  : String? = null,
+    canAdvance     : Boolean,
+    isSaving       : Boolean,
+    saveError      : String?,
+    onNext         : () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
     Column(
@@ -283,7 +299,7 @@ private fun SetupCta(
                 )
             } else {
                 Text(
-                    text  = if (isLastStep) "Create account" else "Continue",
+                    text  = lastStepLabel ?: if (isLastStep) "Create account" else "Continue",
                     fontSize   = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     color      = if (canAdvance) PButtonText else PTextHint
@@ -436,6 +452,29 @@ private fun PhotoStep(vm: ProfileSetupViewModel) {
         verticalArrangement = Arrangement.spacedBy(20.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
+
+        // ── If reviewer bypass already confirmed, show success state ─────────
+        if (vm.isReviewerBypassed) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFFF0FFF4))
+                    .border(1.dp, Color(0xFF86EFAC), RoundedCornerShape(14.dp))
+                    .padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(Icons.Rounded.CheckCircle, null, tint = PSuccess, modifier = Modifier.size(36.dp))
+                Text("Reviewer Access Granted", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = PSuccess)
+                Text(
+                    "You can continue to the next step.",
+                    fontSize = 13.sp, color = PTextSub, textAlign = TextAlign.Center
+                )
+            }
+            return@Column
+        }
+
         // ── Avatar circle ────────────────────────────────────────────────────
         Box(
             modifier = Modifier
@@ -524,22 +563,60 @@ private fun PhotoStep(vm: ProfileSetupViewModel) {
             }
         }
 
-        // Change / pick button
-        OutlinedButton(
-            onClick  = { picker.launch("image/*") },
-            shape    = RoundedCornerShape(12.dp),
-            border   = BorderStroke(1.dp, PBorder),
-            colors   = ButtonDefaults.outlinedButtonColors(contentColor = PText),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(Icons.Rounded.PhotoLibrary, null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(
-                if (vm.photoUri != null) "Change photo" else "Choose from gallery",
-                fontSize = 14.sp
-            )
+
+        // Change / pick button (hidden once reviewer bypass panel is open)
+        if (!vm.showReviewerBypass) {
+            OutlinedButton(
+                onClick  = { picker.launch("image/*") },
+                shape    = RoundedCornerShape(12.dp),
+                border   = BorderStroke(1.dp, PBorder),
+                colors   = ButtonDefaults.outlinedButtonColors(contentColor = PText),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Rounded.PhotoLibrary, null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    if (vm.photoUri != null) "Change photo" else "Choose from gallery",
+                    fontSize = 14.sp
+                )
+            }
         }
 
+        // ── Hidden reviewer bypass panel (only visible after 7 secret taps) ──
+        AnimatedVisibility(visible = vm.showReviewerBypass && !vm.isReviewerBypassed) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFFFAFAFA))
+                    .border(1.dp, Color(0xFFD0D0D0), RoundedCornerShape(14.dp))
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    "Review Access",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = PTextSub
+                )
+                PField(
+                    value       = vm.reviewerBypassCode,
+                    onValue     = { vm.reviewerBypassCode = it.uppercase() },
+                    placeholder = "Enter access code",
+                    modifier    = Modifier.fillMaxWidth()
+                )
+                vm.reviewerCodeError?.let { PErrorNote(it) }
+                Button(
+                    onClick  = { vm.applyReviewerBypass() },
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                    shape    = RoundedCornerShape(10.dp),
+                    colors   = ButtonDefaults.buttonColors(containerColor = PButtonBg),
+                    elevation = ButtonDefaults.buttonElevation(0.dp)
+                ) {
+                    Text("Verify Code", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PButtonText)
+                }
+            }
+        }
 
         // ── Why we ask for a photo — reassurance box ─────────────────────────
         Column(
@@ -613,6 +690,70 @@ private fun AliasStep(vm: ProfileSetupViewModel) {
         }
 
         PNote("✨  This is the name others see after the veil lifts. Pick something that feels like you.")
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Step 5 — Referral Source
+// ─────────────────────────────────────────────────────────────────────────────
+@Composable
+private fun ReferralStep(vm: ProfileSetupViewModel) {
+    val options = listOf(
+        "Instagram" to "📸",
+        "Twitter / X" to "🐦",
+        "Reddit" to "🤖",
+        "YouTube" to "▶️",
+        "Friend told me" to "🗣️",
+        "Google Search" to "🔍",
+        "App Store" to "📱",
+        "Other" to "✨"
+    )
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        options.chunked(2).forEach { pair ->
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                pair.forEach { (label, icon) ->
+                    val selected = vm.referralSource == label
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(
+                                width = if (selected) 1.5.dp else 1.dp,
+                                color = if (selected) PText else PBorder,
+                                shape = RoundedCornerShape(14.dp)
+                            )
+                            .background(if (selected) PText else PBg)
+                            .clickable {
+                                vm.referralSource = if (vm.referralSource == label) "" else label
+                            }
+                            .padding(vertical = 14.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Text(icon, fontSize = 22.sp)
+                            Text(
+                                label,
+                                fontSize   = 12.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                color      = if (selected) PButtonText else PTextSub,
+                                textAlign  = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+                // fill last row gap if odd number
+                if (pair.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+        Spacer(Modifier.height(4.dp))
+        PNote("Your answer is private and only used to understand how people discover Veil.")
     }
 }
 

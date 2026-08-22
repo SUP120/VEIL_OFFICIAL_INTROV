@@ -31,6 +31,11 @@ service cloud.firestore {
                     .hasAny(['isBanned', 'banType', 'bannedUntil', 'strikes',
                              'reportCount', 'isFlagged', 'flaggedInGroups',
                              'adminWarning', 'blockedUsers']);
+      // Presence: user can update only their own onlineAt / lastSeen / showLastSeen
+      allow update: if request.auth != null
+                 && request.auth.uid == userId
+                 && request.resource.data.diff(resource.data).affectedKeys()
+                    .hasOnly(['onlineAt', 'lastSeen', 'showLastSeen']);
     }
 
     // ── Matchmaking queue ──────────────────────────────────────────────────
@@ -458,6 +463,34 @@ service cloud.firestore {
       allow create: if request.auth != null;
     }
 
+    // ── Introvert Feed Posts ───────────────────────────────────────────────────
+    // Any signed-in user can read non-hidden posts. Author can create/delete.
+    // Any user can update likeCount, reportCount, or hidden flag (client-side toggle).
+    match /introvertPosts/{postId} {
+      allow read:   if request.auth != null
+                 && resource.data.get("hidden", false) == false;
+      allow create: if request.auth != null
+                 && request.resource.data.authorId == request.auth.uid;
+      allow update: if request.auth != null
+                 && (resource.data.authorId == request.auth.uid
+                  || request.resource.data.diff(resource.data).affectedKeys()
+                     .hasOnly(['likeCount', 'reportCount', 'hidden']));
+      allow delete: if request.auth != null
+                 && resource.data.authorId == request.auth.uid;
+
+      // Likes subcollection — each user owns their like doc
+      match /likes/{uid} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+
+      // Reports subcollection — reporter writes once, can read their own
+      match /reports/{reporterUid} {
+        allow read:   if request.auth != null && request.auth.uid == reporterUid;
+        allow create: if request.auth != null && request.auth.uid == reporterUid;
+        allow update, delete: if false;
+      }
+    }
+
     // ── Introvert Posts — comments + replies ───────────────────────────────────
     match /introvertPosts/{postId}/comments/{commentId} {
       allow read:   if request.auth != null;
@@ -543,7 +576,233 @@ service cloud.firestore {
       allow create: if request.auth != null;
       allow update, delete: if false; // Cloud Function handles cleanup
     }
+
+    // ── Draw & Guess Rooms ────────────────────────────────────────────────────
+    //
+    //  Collection: drawGuessRooms/{roomId}
+    //  Sub-collections:
+    //    strokes/{strokeId}  — real-time drawing data (drawer writes, guesser reads)
+    //    chat/{messageId}    — guess + lobby chat (both players read & write)
+    //
+    //  Access model:
+    //    - Public rooms   (inviteType == "public")  → any signed-in user can read
+    //    - Private rooms  (inviteType == "private") → only hostUid and guestUid
+    //    - Strokes        → only host or guest, and only during a "playing" round
+    //    - Chat / guesses → host or guest only
+    // ─────────────────────────────────────────────────────────────────────────
+
+    match /drawGuessRooms/{roomId} {
+
+      // ── Room doc reads ───────────────────────────────────────────────────
+      // Public rooms visible to all (lobby browser).
+      // Private rooms visible only to host and guest.
+      allow read: if request.auth != null
+               && (resource.data.inviteType == "public"
+                || resource.data.hostUid    == request.auth.uid
+                || resource.data.guestUid   == request.auth.uid);
+
+      // ── Room creation ────────────────────────────────────────────────────
+      // Creator becomes host; inviteStatus must be "pending" (private) or
+      // "accepted" (public self-created).
+      allow create: if request.auth != null
+                 && request.resource.data.hostUid == request.auth.uid;
+
+      // ── Room updates ─────────────────────────────────────────────────────
+      // Only host or guest may update the room document.
+      // (Covers joining, ready-up, game-phase transitions, score increments.)
+      allow update: if request.auth != null
+                 && (resource.data.hostUid  == request.auth.uid
+                  || resource.data.guestUid == request.auth.uid
+                  // Guest slot open — anyone can join a public room
+                  || (resource.data.inviteType == "public"
+                   && resource.data.guestUid   == ""));
+
+      // ── Room deletion ────────────────────────────────────────────────────
+      // Only the host may delete the room.
+      allow delete: if request.auth != null
+                 && resource.data.hostUid == request.auth.uid;
+
+      // ── Strokes sub-collection ───────────────────────────────────────────
+      // Real-time canvas data. Only room participants can read or write.
+      // Drawer creates strokes; anyone can delete (undo / clear canvas).
+      match /strokes/{strokeId} {
+        allow read: if request.auth != null
+                 && (get(/databases/$(database)/documents/drawGuessRooms/$(roomId)).data.hostUid  == request.auth.uid
+                  || get(/databases/$(database)/documents/drawGuessRooms/$(roomId)).data.guestUid == request.auth.uid);
+
+        allow create: if request.auth != null
+                   && (get(/databases/$(database)/documents/drawGuessRooms/$(roomId)).data.hostUid  == request.auth.uid
+                    || get(/databases/$(database)/documents/drawGuessRooms/$(roomId)).data.guestUid == request.auth.uid);
+
+        allow delete: if request.auth != null
+                   && (get(/databases/$(database)/documents/drawGuessRooms/$(roomId)).data.hostUid  == request.auth.uid
+                    || get(/databases/$(database)/documents/drawGuessRooms/$(roomId)).data.guestUid == request.auth.uid);
+
+        allow update: if false; // strokes are immutable; replaced by delete + re-create
+      }
+
+      // ── Chat sub-collection ──────────────────────────────────────────────
+      // Lobby chat and guess messages. Both players read & write.
+      // Writer's uid must match the uid field in the message.
+      match /chat/{messageId} {
+        allow read: if request.auth != null
+                 && (get(/databases/$(database)/documents/drawGuessRooms/$(roomId)).data.hostUid  == request.auth.uid
+                  || get(/databases/$(database)/documents/drawGuessRooms/$(roomId)).data.guestUid == request.auth.uid);
+
+        allow create: if request.auth != null
+                   && request.resource.data.uid == request.auth.uid
+                   && (get(/databases/$(database)/documents/drawGuessRooms/$(roomId)).data.hostUid  == request.auth.uid
+                    || get(/databases/$(database)/documents/drawGuessRooms/$(roomId)).data.guestUid == request.auth.uid);
+
+        allow update, delete: if false; // chat messages are immutable
+      }
+    }
+
+    // ── game_invite_draw_guess messages in existing match chat ────────────────
+    // The invite bubble (text = "game_invite_draw_guess::{roomId}") is stored in
+    // matches/{matchId}/messages — already covered by the /matches rule above.
+    // No additional rule needed.
+
+    // ── Voice Rooms (LiveKit) ─────────────────────────────────────────────────
+    match /voiceRooms/{roomId} {
+      // Any signed-in user can read live room list / individual room
+      allow read: if request.auth != null;
+
+      // Only the creator can create a room (and must set themselves as host)
+      allow create: if request.auth != null
+                    && request.resource.data.hostUid == request.auth.uid;
+
+      // Host can update anything (close room, update topic, etc.)
+      // Any participant can update participantUids + participantCount (join/leave)
+      allow update: if request.auth != null
+                    && (resource.data.hostUid == request.auth.uid
+                        || request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly(['participantUids', 'participantCount'])
+                        || request.resource.data.diff(resource.data).affectedKeys()
+                             .hasOnly(['isLive', 'closedReason']));
+
+      // Only host can delete (close) a room
+      allow delete: if request.auth != null
+                    && resource.data.hostUid == request.auth.uid;
+    }
+
+
+    // ── Veil Sparks (Questions / Hot Takes / Confessions feed) ────────────────
+    //  Collection:  veilSparks/{sparkId}
+    //  Sub-colls:   answers/{answerId}           — Reddit-style scored answers
+    //               answers/{answerId}/votes/{uid} — per-user vote record
+    //               resonators/{uid}             — users who resonated
+    match /veilSparks/{sparkId} {
+      allow read: if request.auth != null;
+
+      // Creator stamps their own authorId
+      allow create: if request.auth != null
+                 && request.resource.data.authorId == request.auth.uid;
+
+      // Any signed-in user can bump resonanceCount / answerCount (counter fields)
+      allow update: if request.auth != null;
+
+      // Only author can delete their own spark
+      allow delete: if request.auth != null
+                 && resource.data.authorId == request.auth.uid;
+
+      // ── Answers ────────────────────────────────────────────────────────────
+      match /answers/{answerId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+                   && request.resource.data.authorId == request.auth.uid;
+        // Any signed-in user can update score (up/down vote counter)
+        allow update: if request.auth != null;
+        allow delete: if request.auth != null
+                   && resource.data.authorId == request.auth.uid;
+
+        // Per-user vote doc — each user owns their vote record
+        match /votes/{userId} {
+          allow read, write: if request.auth != null
+                          && request.auth.uid == userId;
+        }
+      }
+
+      // ── Resonators ─────────────────────────────────────────────────────────
+      match /resonators/{userId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null
+                  && request.auth.uid == userId;
+      }
+
+      // ── Dissenters (Nope / Disagree) ────────────────────────────────────────
+      match /dissenters/{userId} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null
+                  && request.auth.uid == userId;
+      }
+    }
+
+    // ── Veil Admin Reports (post & chat reports) ──────────────────────────────
+    // Any authenticated user can create a report. Admin reads via Firebase Console.
+    // Normal users cannot read, update, or delete reports.
+    match /veilReports/{reportId} {
+      allow create: if request.auth != null
+                 && request.resource.data.reportedBy == request.auth.uid;
+      allow read:   if false;  // admin reads directly in Firebase Console
+      allow update, delete: if false;
+    }
+
+    // ── Group Chat Rooms ──────────────────────────────────────────────────────
+    //  Collection: group_rooms/{roomId}
+    //  Sub-coll:   messages/{msgId}
+    //
+    //  Access model:
+    //    - Any signed-in user can READ the rooms list (public discovery)
+    //    - Any signed-in user can CREATE a room (createdBy must match their uid)
+    //    - Members can UPDATE their own room (join, leave, pending add/remove)
+    //    - Creator can UPDATE anything (approve/deny, memberCount, lastMsg, delete)
+    //    - Only creator can DELETE the room (system rooms are protected)
+    //    - Any signed-in user can READ messages (public room model)
+    //    - Only members can CREATE messages (uid must match)
+    match /group_rooms/{roomId} {
+      // Any signed-in user can read the room list / individual room
+      allow read: if request.auth != null;
+
+      // Any signed-in user can create a room — createdBy must be themselves
+      allow create: if request.auth != null
+                 && request.resource.data.createdBy == request.auth.uid;
+
+      // Creator can update anything (approve, deny, kick, update lastMsg, etc.)
+      // Any signed-in user can update memberUids/pendingUids/memberCount
+      // (needed for join & request-to-join flows from the access-gate screen)
+      allow update: if request.auth != null
+                 && (
+                   resource.data.createdBy == request.auth.uid
+                   || request.resource.data.diff(resource.data).affectedKeys()
+                        .hasAny(['memberUids', 'pendingUids', 'memberCount',
+                                 'lastMsg', 'lastMsgAt'])
+                 );
+
+      // Only creator can delete — and system rooms are protected
+      allow delete: if request.auth != null
+                 && resource.data.createdBy == request.auth.uid
+                 && resource.data.get('isSystem', false) == false;
+
+      // ── Messages subcollection ─────────────────────────────────────────────
+      match /messages/{messageId} {
+        // Any signed-in user can read messages (rooms are public)
+        allow read: if request.auth != null;
+
+        // Only signed-in users can create — uid field must match the writer
+        allow create: if request.auth != null
+                   && request.resource.data.uid == request.auth.uid;
+
+        // Messages are immutable once sent
+        allow update, delete: if false;
+      }
+    }
+
+    // ── Introvert Feed Connections / Feed Friends index ───────────────────────
+    // Used by group invite loading — any signed-in user can read their own index.
+    match /userFriends/{uid}/index/{docId} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+    }
+
   }
 }
-
-

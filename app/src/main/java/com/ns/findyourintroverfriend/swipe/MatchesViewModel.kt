@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.ns.findyourintroverfriend.util.PresenceManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,6 +49,10 @@ class MatchesViewModel : ViewModel() {
     // Set of matchIds with unread messages (last msg sent by partner, not us)
     private val _unreadMatchIds = MutableStateFlow<Set<String>>(emptySet())
     val unreadMatchIds: StateFlow<Set<String>> = _unreadMatchIds.asStateFlow()
+
+    // Presence map: otherUid → Pair(isOnline, lastSeenMs)
+    private val _presenceMap = MutableStateFlow<Map<String, Pair<Boolean, Long>>>(emptyMap())
+    val presenceMap: StateFlow<Map<String, Pair<Boolean, Long>>> = _presenceMap.asStateFlow()
 
     private val mergedMatches = mutableMapOf<String, SwipeMatch>()
 
@@ -146,10 +151,21 @@ class MatchesViewModel : ViewModel() {
 
     private fun publishMatches() {
         val all = mergedMatches.values.sortedByDescending { it.matchedAt }
-        // source=="friend" → _friendMatches (Feed Friends screen)
-        // source=="swipe" OR no source (legacy) → _matches (Veil Matches screen)
         _matches.value       = all.filter { it.source != "friend" }
         _friendMatches.value = all.filter { it.source == "friend" }
+        // Refresh presence for all match partners
+        refreshPresence()
+    }
+
+    fun refreshPresence() {
+        if (uid.isEmpty()) return
+        val allMatches = mergedMatches.values.toList()
+        val otherUids = allMatches.map { if (it.userA == uid) it.userB else it.userA }
+        if (otherUids.isEmpty()) return
+        viewModelScope.launch {
+            val map = PresenceManager.fetchPresence(otherUids)
+            _presenceMap.value = map
+        }
     }
 
     // ── PRIMARY: listen to userMatches/{uid}/index for reliable match discovery ─

@@ -265,7 +265,12 @@ class IntrovertFeedViewModel : ViewModel() {
     // ─────────────────────────────────────────────────────────────────────────
     //  Like / Report / Create post  (unchanged logic)
     // ─────────────────────────────────────────────────────────────────────────
-    fun refreshPosts() { loadPosts(); loadLikedPosts() }
+    fun refreshPosts() {
+        // Rotate salt → new order on every pull-to-refresh
+        com.ns.findyourintroverfriend.util.FeedRanker.newSession()
+        loadPosts()
+        loadLikedPosts()
+    }
 
     fun toggleLike(postId: String) {
         if (uid.isEmpty()) return
@@ -314,15 +319,24 @@ class IntrovertFeedViewModel : ViewModel() {
         }
     }
 
+    // Signals the UI to scroll to top after a new post is created
+    private val _scrollToTop = MutableStateFlow(false)
+    val scrollToTop: StateFlow<Boolean> = _scrollToTop.asStateFlow()
+    fun consumeScrollToTop() { _scrollToTop.value = false }
+
     fun createPost(content: String) {
         if (uid.isEmpty() || content.trim().length < 10) return
         viewModelScope.launch {
             try {
-                val alias = generateAnonymousAlias()
-                val postId = db.collection("introvertPosts").document().id
+                val alias   = generateAnonymousAlias()
+                val postId  = db.collection("introvertPosts").document().id
+                val now     = System.currentTimeMillis()
+                val newPost = IntrovertPost(postId, uid, alias, content.trim(), now, 0, false, 0, 0)
+                // Optimistic: put at very front — rank() will keep it in top-3 (newest createdAt)
+                _posts.value    = listOf(newPost) + _posts.value
+                _scrollToTop.value = true
                 db.collection("introvertPosts").document(postId)
-                    .set(IntrovertPost(postId, uid, alias, content.trim(),
-                        System.currentTimeMillis(), 0, false, 0, 0).toMap()).await()
+                    .set(newPost.toMap()).await()
             } catch (_: Exception) {}
         }
     }

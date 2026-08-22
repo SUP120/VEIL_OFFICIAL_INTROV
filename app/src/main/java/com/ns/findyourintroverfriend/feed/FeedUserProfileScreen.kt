@@ -1,6 +1,7 @@
 package com.ns.findyourintroverfriend.feed
 
 import android.util.Log
+import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -27,6 +28,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.ns.findyourintroverfriend.util.VeilThemeManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
 
@@ -476,6 +478,68 @@ private fun ProfileHeader(
                             "Connect",
                             color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold
                         )
+                    }
+                }
+            }
+        }
+
+        // Own-profile settings section — Appearance
+        if (isOwnProfile) {
+            Spacer(Modifier.height(16.dp))
+
+            // Section header
+            Text(
+                "APPEARANCE",
+                fontSize      = 10.sp,
+                fontWeight    = FontWeight.SemiBold,
+                color         = PGray,
+                letterSpacing = 1.sp
+            )
+            Spacer(Modifier.height(8.dp))
+
+            // Three-segment theme toggle: System / Light / Dark
+            val ctx         = androidx.compose.ui.platform.LocalContext.current
+            val currentMode = VeilThemeManager.themeMode
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .border(0.6.dp, PDivider, RoundedCornerShape(10.dp))
+                    .background(PSurface)
+            ) {
+                val segments = listOf(
+                    Triple(VeilThemeManager.ThemeMode.SYSTEM, "System",  "⊙"),
+                    Triple(VeilThemeManager.ThemeMode.LIGHT,  "Light",   "☀"),
+                    Triple(VeilThemeManager.ThemeMode.DARK,   "Dark",    "🌙"),
+                )
+                segments.forEachIndexed { idx, (mode, label, icon) ->
+                    val isSelected = currentMode == mode
+                    val bg by animateColorAsState(
+                        if (isSelected) PBlack else Color.Transparent,
+                        tween(220), label = "seg_$idx"
+                    )
+                    val textColor by animateColorAsState(
+                        if (isSelected) Color.White else PGray,
+                        tween(220), label = "tc_$idx"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(3.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(bg)
+                            .clickable { VeilThemeManager.setTheme(ctx, mode) }
+                            .padding(vertical = 9.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(
+                            verticalAlignment     = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Text(icon,  fontSize = 12.sp, color = textColor)
+                            Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = textColor)
+                        }
                     }
                 }
             }

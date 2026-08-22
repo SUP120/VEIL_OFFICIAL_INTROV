@@ -34,6 +34,10 @@ enum class SetupStep(val title: String, val subtitle: String) {
     ALIAS(
         "Choose your alias",
         "This is the name others will see once the veil lifts. Make it yours."
+    ),
+    REFERRAL(
+        "How did you find Veil?",
+        "Takes one second. Helps us reach more introverts like you."
     )
 }
 
@@ -89,9 +93,36 @@ class ProfileSetupViewModel : ViewModel() {
     var alias    by mutableStateOf("")
     var aliasError by mutableStateOf<String?>(null)
 
+    var referralSource by mutableStateOf("")  // e.g. "Instagram", "Friend", etc.
+
     var photoUri    by mutableStateOf<Uri?>(null)
     var photoError  by mutableStateOf<String?>(null)
     var isValidating by mutableStateOf(false)   // true while ML Kit is running
+
+    // ── Reviewer bypass (hidden code for Google Play reviewers) ──────────────
+    // Real users never see this. Activated by tapping the photo circle 7 times.
+    // The correct code is set in Play Console → App Access → Instructions.
+    private val REVIEWER_CODE     = "VEIL2025REVIEW"  // <-- Change this each submission
+    var reviewerBypassCode        by mutableStateOf("")
+    var showReviewerBypass        by mutableStateOf(false)
+    var isReviewerBypassed        by mutableStateOf(false)
+        private set
+    var reviewerCodeError         by mutableStateOf<String?>(null)
+
+    fun onPhotoCircleTapped(tapCount: Int) {
+        // After 7 rapid taps, reveal the hidden reviewer code field
+        if (tapCount >= 7) showReviewerBypass = true
+    }
+
+    fun applyReviewerBypass() {
+        if (reviewerBypassCode.trim().uppercase() == REVIEWER_CODE) {
+            isReviewerBypassed = true
+            reviewerCodeError  = null
+            photoError         = null
+        } else {
+            reviewerCodeError = "Incorrect code. Contact support."
+        }
+    }
 
     val selectedPersonalities = mutableStateListOf<String>()
     val selectedComforts      = mutableStateListOf<String>()
@@ -109,10 +140,13 @@ class ProfileSetupViewModel : ViewModel() {
     // ─────────────────────────────────────────────────────────────────────────
 
     fun canAdvance(): Boolean = when (currentStep) {
-        SetupStep.DOB    -> validateDob()
-        SetupStep.GENDER -> gender != null
-        SetupStep.PHOTO  -> photoUri != null && photoError == null && !isValidating
-        SetupStep.ALIAS  -> alias.trim().length >= 2
+        SetupStep.DOB      -> validateDob()
+        SetupStep.GENDER   -> gender != null
+        // Photo step: real users must upload a valid face photo.
+        // Google Play reviewers can bypass with the secret code (set in Play Console instructions).
+        SetupStep.PHOTO    -> isReviewerBypassed || (photoUri != null && photoError == null && !isValidating)
+        SetupStep.ALIAS    -> alias.trim().length >= 2
+        SetupStep.REFERRAL -> true  // always skippable
     }
 
     fun advanceStep() {
@@ -256,7 +290,10 @@ class ProfileSetupViewModel : ViewModel() {
                     "profileComplete" to true,
                     "trustScore"      to 0,
                     "unlockStage"     to 0,
-                    "createdAt"       to com.google.firebase.Timestamp.now()
+                    "referralSource"  to referralSource.trim(),
+                    "createdAt"       to com.google.firebase.Timestamp.now(),
+                    // Flag reviewer-bypassed accounts so they can be identified & cleaned up
+                    "isReviewerAccount" to isReviewerBypassed
                 )
                 db.collection("users").document(uid)
                     .set(data, com.google.firebase.firestore.SetOptions.merge()).await()

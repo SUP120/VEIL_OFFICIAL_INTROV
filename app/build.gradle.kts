@@ -31,8 +31,8 @@ android {
         applicationId = "com.ns.findyourintroverfriend"
         minSdk = 28
         targetSdk = 36
-        versionCode = 21
-        versionName = "1.10.1"
+        versionCode = 32
+        versionName = "1.17.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -40,8 +40,6 @@ android {
         buildConfigField("String", "ONESIGNAL_APP_ID", "\"ba0bfa6d-3103-4b13-86dc-b94e971fb798\"")
 
         // Cloudinary — read from local.properties (NOT gradle.properties)
-        // project.findProperty() only reads gradle.properties — wrong!
-        // We must load local.properties explicitly, same as keystoreProps above.
         val localProps = Properties()
         val localPropsFile = rootProject.file("local.properties")
         if (localPropsFile.exists()) localProps.load(localPropsFile.inputStream())
@@ -49,6 +47,14 @@ android {
         val uploadPreset = localProps.getProperty("cloudinary.upload.preset", "")
         buildConfigField("String", "CLOUDINARY_CLOUD_NAME",    "\"$cloudName\"")
         buildConfigField("String", "CLOUDINARY_UPLOAD_PRESET", "\"$uploadPreset\"")
+
+        // LiveKit — Voice Rooms (host URL safe to ship in APK)
+        val livekitHost     = localProps.getProperty("livekit.host", "")
+        val livekitTokenUrl = localProps.getProperty("livekit.token.url", "")
+        buildConfigField("String", "LIVEKIT_HOST",      "\"$livekitHost\"")
+        buildConfigField("String", "LIVEKIT_TOKEN_URL", "\"$livekitTokenUrl\"")
+
+
 
     }
 
@@ -81,11 +87,34 @@ android {
         buildConfig  = true
     }
 
-    // ── 16 KB page-size alignment (required by Google Play for API 35+) ──────
+    // ── 16 KB page-size compliance (REQUIRED for Google Play targeting API 35+) ──────────────
+    // .so files MUST be stored uncompressed (useLegacyPackaging = false) so Android
+    // can mmap them directly at 16 KB page boundaries.
+    // Setting = true (compressed) causes the Play Console 16 KB error — do NOT change.
+    // Size impact is kept low because we use voice-sdk (~10 MB) not full-sdk (~28 MB),
+    // and bundle ABI splits mean each device downloads only its own ABI.
     packaging {
         jniLibs {
-            useLegacyPackaging = false
+            useLegacyPackaging = false   // ← required for 16 KB page alignment
         }
+        // Strip useless metadata from the AAB
+        resources {
+            excludes += setOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt",
+                "DebugProbesKt.bin"
+            )
+        }
+    }
+
+    // ── Bundle splits: Play delivers only what each device needs ────────────────
+    bundle {
+        language { enableSplit = true }   // only install user’s languages
+        density  { enableSplit = true }   // only install matching screen density
+        abi      { enableSplit = true }   // only install matching ABI
     }
 }
 
@@ -120,10 +149,14 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:33.9.0"))
     implementation("com.google.firebase:firebase-auth-ktx")
     implementation("com.google.firebase:firebase-firestore-ktx")
+    implementation("com.google.firebase:firebase-storage-ktx")          // image uploads
     implementation("com.google.firebase:firebase-crashlytics-ktx")
     implementation("com.google.firebase:firebase-analytics-ktx")
     implementation("com.google.firebase:firebase-appcheck-playintegrity") // blocks bots
     implementation("com.google.firebase:firebase-perf-ktx")               // performance monitoring
+    implementation("com.google.firebase:firebase-messaging-ktx")          // FCM (for notifications)
+    implementation("com.google.firebase:firebase-functions-ktx")          // Callable Cloud Functions
+
     // FCM: OneSignal SDK handles its own FCM registration internally
 
     // ── Google Sign-In ────────────────────────────────────────────────────────
@@ -154,13 +187,21 @@ dependencies {
     implementation("com.github.yalantis:ucrop:2.2.8")
 
     // ── Google Play Billing ───────────────────────────────────────────────────
-    implementation("com.android.billingclient:billing-ktx:7.0.0")
+    // ⚠ Min required by Google Play: 8.0.0 (enforced Aug 31 2026).
+    // Using 8.0.0 — compatible with this project's Kotlin 2.0.21.
+    // (9.1.0 requires Kotlin 2.3.0 which causes build failure here)
+    implementation("com.android.billingclient:billing-ktx:8.0.0")
 
     // Google Play In-App Review
     implementation("com.google.android.play:review-ktx:2.0.1")
 
-    // ── Lottie — for animated illustrations ───────────────────────────────────
+    // ── Lottie — for animated illustrations ───────────────────────────────────────
     implementation("com.airbnb.android:lottie-compose:6.4.0")
+
+    // ── LiveKit — Voice Rooms real-time audio (FREE, no credit card) ──────────
+    implementation("io.livekit:livekit-android:2.9.0")
+    implementation("io.livekit:livekit-android-compose-components:1.2.0")
+
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

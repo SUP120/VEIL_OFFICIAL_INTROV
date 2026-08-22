@@ -3,7 +3,7 @@ const { getFirestore, Timestamp, FieldValue } = require("firebase-admin/firestor
 const { getMessaging } = require("firebase-admin/messaging");
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onRequest } = require("firebase-functions/v2/https");
+const { onRequest, onCall } = require("firebase-functions/v2/https");
 const { logger } = require("firebase-functions");
 const https = require("https");
 
@@ -40,6 +40,129 @@ const UNLOCK_AMOUNT = 79;
 
 // Extended message limit after unlock
 const UNLOCKED_MSG_LIMIT = 20;
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  AGORA CONFIG
+//  Set your keys in functions/.env (NOT committed to git)
+//     AGORA_APP_ID=your_app_id
+//     AGORA_APP_CERTIFICATE=your_primary_certificate
+// ─────────────────────────────────────────────────────────────────────────────
+
+const AGORA_APP_ID          = process.env.AGORA_APP_ID          || "";
+const AGORA_APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE || "";
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  FUNCTION: generateAgoraToken
+//  Called by the Android app before joining a voice room channel.
+//  Returns a signed RTC token valid for 1 hour.
+//
+//  POST /generateAgoraToken
+//  Body: { uid: "firebase_uid", channelName: "roomId", role: "publisher"|"subscriber" }
+//  Returns: { token: "006xxx...", expireTs: 1234567890 }
+//
+//  Security:
+//    • Caller must be a valid authenticated Firebase user
+//    • channelName (roomId) must exist as a live voiceRoom in Firestore
+//    • Rate-limited by Firebase Functions invocation limits
+// ─────────────────────────────────────────────────────────────────────────────
+
+exports.generateAgoraToken = onRequest(
+    { region: "asia-south1", cors: true },
+    async (req, res) => {
+        if (req.method !== "POST") {
+            return res.status(405).json({ error: "Method not allowed" });
+        }
+
+        const { uid, channelName, role } = req.body;
+
+        // ── Validate inputs ──────────────────────────────────────────────────
+        if (!uid || typeof uid !== "string" || uid.trim().length === 0) {
+            return res.status(400).json({ error: "uid is required" });
+        }
+        if (!channelName || typeof channelName !== "string" || channelName.trim().length === 0) {
+            return res.status(400).json({ error: "channelName is required" });
+        }
+
+        // ── Validate Agora credentials are configured ─────────────────────────
+        if (!AGORA_APP_ID || !AGORA_APP_CERTIFICATE) {
+            logger.error("generateAgoraToken: AGORA_APP_ID or AGORA_APP_CERTIFICATE not set in .env");
+            return res.status(500).json({ error: "Audio service not configured" });
+        }
+
+        // ── Verify caller exists in Firestore (auth check) ───────────────────
+        try {
+            const userDoc = await db.collection("users").doc(uid.trim()).get();
+            if (!userDoc.exists) {
+                return res.status(403).json({ error: "User not found" });
+            }
+        } catch (e) {
+            logger.error("generateAgoraToken: user verification failed:", e);
+            return res.status(500).json({ error: "User verification failed" });
+        }
+
+        // ── Verify room exists and is live ────────────────────────────────────
+        try {
+            const roomDoc = await db.collection("voiceRooms").doc(channelName.trim()).get();
+            if (!roomDoc.exists || roomDoc.data()?.isLive !== true) {
+                return res.status(404).json({ error: "Voice room not found or not live" });
+            }
+        } catch (e) {
+            logger.error("generateAgoraToken: room verification failed:", e);
+            return res.status(500).json({ error: "Room verification failed" });
+        }
+
+        // ── Generate the RTC token ─────────────────────────────────────────────
+        try {
+            const { RtcTokenBuilder, RtcRole } = require("agora-token");
+
+            // Agora UID: must be a positive 32-bit integer
+            // We hash the Firebase UID consistently (same logic as in Android)
+            const agoraUid = Math.max(1, Math.abs(hashCode(uid.trim())) & 0x7FFFFFFF);
+
+            // Role: publisher = broadcaster (speaks), subscriber = audience (listens)
+            const agoraRole = (role === "publisher")
+                ? RtcRole.PUBLISHER
+                : RtcRole.SUBSCRIBER;
+
+            // Token valid for 1 hour (3600 seconds)
+            const expireTs = Math.floor(Date.now() / 1000) + 3600;
+
+            const token = RtcTokenBuilder.buildTokenWithUid(
+                AGORA_APP_ID,
+                AGORA_APP_CERTIFICATE,
+                channelName.trim(),
+                agoraUid,
+                agoraRole,
+                expireTs,
+                expireTs   // privilege expiry same as token expiry
+            );
+
+            logger.info(`generateAgoraToken: ✅ token generated for uid=${uid} channel=${channelName} role=${role} agoraUid=${agoraUid}`);
+
+            return res.status(200).json({
+                token:    token,
+                expireTs: expireTs,
+                agoraUid: agoraUid,
+            });
+
+        } catch (err) {
+            logger.error("generateAgoraToken: token generation error:", err);
+            return res.status(500).json({ error: "Token generation failed: " + err.message });
+        }
+    }
+);
+
+// ── Helper: Java-compatible string hashCode (mirrors Android's uid.hashCode()) ─
+function hashCode(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash | 0; // Convert to 32-bit int
+    }
+    return hash;
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  FUNCTION 1: matchGroups
@@ -829,14 +952,12 @@ async function notifyUsers(uids, { title, body, data = {} }) {
         android: {
             priority: "high",
             notification: {
-                channelId: "veil_events",          // IMPORTANCE_HIGH channel
+                channelId: "veil_events",
                 sound: "default",
                 notificationPriority: "PRIORITY_HIGH",
                 vibrateTimingsMillis: [0, 250, 250, 250],
                 defaultVibrateTimings: false,
-                clickAction: "FLUTTER_NOTIFICATION_CLICK", // optional, for future use
             },
-            // Time-to-live: 4 weeks — ensures delivery even if device is offline briefly
             ttl: { seconds: 2419200 },
         },
         apns: {
@@ -851,19 +972,16 @@ async function notifyUsers(uids, { title, body, data = {} }) {
         },
     };
 
-    // ── 3. Send and clean up stale tokens ─────────────────────────────────
+    // ── 3. Send and clean up stale tokens ──────────────────────────────────
     try {
         const result = await fcm.sendEachForMulticast(message);
         logger.info(`notifyUsers: sent=${result.successCount} failed=${result.failureCount} for ${uids.length} user(s)`);
 
-        // Clean up invalid tokens so they don't pile up
         const staleCleanups = [];
         result.responses.forEach((resp, idx) => {
             if (!resp.success) {
                 const errCode = resp.error?.code;
                 logger.warn(`notifyUsers: token failed for uid=${tokenEntries[idx]?.uid} — ${errCode}: ${resp.error?.message}`);
-
-                // Remove tokens that are permanently invalid
                 if (
                     errCode === "messaging/invalid-registration-token" ||
                     errCode === "messaging/registration-token-not-registered" ||
@@ -889,128 +1007,6 @@ async function notifyUsers(uids, { title, body, data = {} }) {
         logger.error("notifyUsers: FCM sendEachForMulticast failed:", err.message);
     }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Helper: strip a Date to its calendar day in IST (returns YYYY-MM-DD string)
-// ─────────────────────────────────────────────────────────────────────────────
-
-function toISTDate(date) {
-    return new Date(date.getTime() + 5.5 * 60 * 60 * 1000)
-        .toISOString()
-        .slice(0, 10); // "YYYY-MM-DD"
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  FUNCTION: migrateFriendMatches
-//  One-time HTTP migration. Call once after deploy:
-//    curl -X POST https://asia-south1-<PROJECT>.cloudfunctions.net/migrateFriendMatches
-//
-//  What it does:
-//  1. Reads every document in userMatches/{uid}/index for ALL users
-//  2. For each matchId, reads the match doc from matches/{matchId}
-//  3. If source=="friend" OR chatUnlocked==true → it's a friendship match:
-//     a. Writes the index entry to userFriends/{uid}/index/{matchId}
-//     b. Updates matches/{matchId} with source="friend"
-//     c. Optionally removes from userMatches/{uid}/index (optional — leave for now)
-//  4. Returns a summary of how many were migrated
-// ─────────────────────────────────────────────────────────────────────────────
-
-exports.migrateFriendMatches = onRequest(
-    { region: "asia-south1", cors: true, timeoutSeconds: 540, memory: "512MiB" },
-    async (req, res) => {
-        // Simple auth guard — require a secret header
-        const secret = req.headers["x-migration-secret"] || req.query.secret;
-        if (secret !== "veil_migrate_2025") {
-            return res.status(401).json({ error: "Unauthorized" });
-        }
-
-        logger.info("migrateFriendMatches: started");
-
-        let totalUsersScanned  = 0;
-        let totalMatchesScanned = 0;
-        let totalMigrated      = 0;
-        let errors             = [];
-
-        try {
-            // Step 1: Get all users who have a userMatches index
-            const usersSnap = await db.collection("userMatches").listDocuments();
-
-            for (const userDocRef of usersSnap) {
-                const uid = userDocRef.id;
-                totalUsersScanned++;
-
-                try {
-                    // Step 2: Get all match index entries for this user
-                    const indexSnap = await db.collection("userMatches")
-                        .doc(uid).collection("index").get();
-
-                    for (const indexDoc of indexSnap.docs) {
-                        const matchId  = indexDoc.data().matchId || indexDoc.id;
-                        totalMatchesScanned++;
-
-                        try {
-                            // Step 3: Read the actual match document
-                            const matchDoc = await db.collection("matches").doc(matchId).get();
-                            if (!matchDoc.exists) continue;
-
-                            const matchData = matchDoc.data();
-                            const isFriend  = matchData.source === "friend" || matchData.chatUnlocked === true;
-
-                            if (!isFriend) continue;
-
-                            // Step 4: Write to userFriends/{uid}/index
-                            const friendIndexRef = db.collection("userFriends")
-                                .doc(uid).collection("index").doc(matchId);
-
-                            const alreadyExists = (await friendIndexRef.get()).exists;
-                            if (!alreadyExists) {
-                                await friendIndexRef.set({
-                                    matchId   : matchId,
-                                    userA     : matchData.userA     || "",
-                                    userB     : matchData.userB     || "",
-                                    aliasA    : matchData.aliasA    || "",
-                                    aliasB    : matchData.aliasB    || "",
-                                    photoA    : matchData.photoA    || "",
-                                    photoB    : matchData.photoB    || "",
-                                    avatarA   : matchData.avatarA   || "",
-                                    avatarB   : matchData.avatarB   || "",
-                                    createdAt : matchData.matchedAt || Date.now(),
-                                });
-                                totalMigrated++;
-                                logger.info(`Migrated match ${matchId} for user ${uid}`);
-                            }
-
-                            // Step 5: Ensure the match doc has source="friend"
-                            if (matchData.source !== "friend") {
-                                await db.collection("matches").doc(matchId)
-                                    .update({ source: "friend" });
-                            }
-
-                        } catch (matchErr) {
-                            errors.push(`match ${matchId} for user ${uid}: ${matchErr.message}`);
-                        }
-                    }
-                } catch (userErr) {
-                    errors.push(`user ${uid}: ${userErr.message}`);
-                }
-            }
-
-            const summary = {
-                success: true,
-                totalUsersScanned,
-                totalMatchesScanned,
-                totalMigrated,
-                errors: errors.slice(0, 20),  // cap error list
-            };
-            logger.info("migrateFriendMatches complete:", summary);
-            return res.status(200).json(summary);
-
-        } catch (err) {
-            logger.error("migrateFriendMatches fatal error:", err);
-            return res.status(500).json({ error: err.message });
-        }
-    }
-);
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Music Room — broadcast invite notification to all users
@@ -1062,5 +1058,110 @@ exports.onMusicRoomInvite = onDocumentWritten(
             }
         }
         logger.info(`Music Room invite sent to ${tokens.length} users for room ${roomId}`);
+    }
+);
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  FUNCTION: generateLiveKitToken
+//  Called by Android app before joining a Voice Room channel.
+//  Returns a signed LiveKit JWT token valid for 1 hour.
+//
+//  POST /generateLiveKitToken
+//  Body: { uid: "firebase_uid", roomName: "roomId", canPublish: true|false }
+//  Returns: { token: "eyJ...", livekitUrl: "wss://..." }
+//
+//  Security:
+//    • Caller uid must exist in Firestore users collection
+//    • API Secret never leaves the server
+// ─────────────────────────────────────────────────────────────────────────────
+
+exports.generateLiveKitToken = onCall(
+    { region: "asia-south1" },
+    async (request) => {
+        // onCall automatically verifies Firebase Auth — uid is guaranteed
+        const uid = request.auth?.uid;
+        if (!uid) {
+            throw new Error("unauthenticated");
+        }
+
+        const { roomName, canPublish } = request.data;
+
+        if (!roomName || typeof roomName !== "string" || roomName.trim().length === 0) {
+            throw new Error("roomName is required");
+        }
+
+        const apiKey     = process.env.LIVEKIT_API_KEY    || "";
+        const apiSecret  = process.env.LIVEKIT_API_SECRET || "";
+        const livekitUrl = process.env.LIVEKIT_URL        || "";
+
+        if (!apiKey || !apiSecret || !livekitUrl) {
+            logger.error("generateLiveKitToken: LiveKit env vars not configured");
+            throw new Error("Voice service not configured on server");
+        }
+
+        try {
+            const { AccessToken } = require("livekit-server-sdk");
+
+            const at = new AccessToken(apiKey, apiSecret, {
+                identity: uid,
+                ttl:      "1h",
+            });
+
+            at.addGrant({
+                roomJoin:     true,
+                room:         roomName.trim(),
+                canPublish:   canPublish !== false,   // default true
+                canSubscribe: true,
+            });
+
+            const token = await at.toJwt();
+
+            logger.info(`generateLiveKitToken: ✅ uid=${uid} room=${roomName}`);
+            return { token, livekitUrl };
+
+        } catch (err) {
+            logger.error("generateLiveKitToken error:", err);
+            throw new Error("Token generation failed: " + err.message);
+        }
+    }
+);
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  FUNCTION: cleanupExpiredVoiceRooms
+//  Runs every 5 minutes — marks expired voice rooms as isLive=false
+//  so all connected Android clients receive the Firestore update and auto-leave.
+// ─────────────────────────────────────────────────────────────────────────────
+
+exports.cleanupExpiredVoiceRooms = onSchedule(
+    {
+        schedule:  "*/5 * * * *",   // every 5 minutes
+        timeZone:  "Asia/Kolkata",
+        region:    "asia-south1",
+    },
+    async () => {
+        logger.info("cleanupExpiredVoiceRooms: running");
+        try {
+            const now  = Timestamp.now();
+            const snap = await db.collection("voiceRooms")
+                .where("isLive", "==", true)
+                .where("expiresAt", "<=", now)
+                .get();
+
+            if (snap.empty) {
+                logger.info("cleanupExpiredVoiceRooms: nothing to clean");
+                return;
+            }
+
+            const batch = db.batch();
+            snap.docs.forEach(doc => {
+                batch.update(doc.ref, { isLive: false, closedReason: "expired" });
+            });
+            await batch.commit();
+            logger.info(`cleanupExpiredVoiceRooms: closed ${snap.size} expired room(s)`);
+        } catch (err) {
+            logger.error("cleanupExpiredVoiceRooms error:", err);
+        }
     }
 );

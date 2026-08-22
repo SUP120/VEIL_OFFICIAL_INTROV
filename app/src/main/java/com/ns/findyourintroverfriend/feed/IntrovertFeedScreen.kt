@@ -6,6 +6,8 @@ import androidx.compose.foundation.*
 import androidx.compose.foundation.interaction.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
@@ -36,29 +38,56 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.withStyle
 import com.google.firebase.auth.FirebaseAuth
+import com.ns.findyourintroverfriend.swipe.MatchesViewModel
+import com.ns.findyourintroverfriend.util.LocalVeilIsDark
+import com.ns.findyourintroverfriend.util.VeilThemeManager
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
-// ── Professional Design Tokens (Instagram-inspired) ──────────────────────────
-private val FBg         = Color(0xFFFFFFFF)      // Pure white background
-private val FCard       = Color(0xFFFFFFFF)      // White cards
-private val FBorder     = Color(0xFFDBDBDB)      // Subtle gray border
-private val FPrimary    = Color(0xFF262626)      // Near black text
-private val FSecondary  = Color(0xFF8E8E8E)      // Gray secondary text
-private val FMuted      = Color(0xFFC7C7C7)      // Light gray
-private val FAccent     = Color(0xFF0095F6)      // Instagram blue
-private val FAccentSoft = Color(0xFFE7F3FF)      // Very light blue
-private val FRed        = Color(0xFFED4956)      // Instagram red/like color
-private val FRedSoft    = Color(0xFFFFF0F1)      // Light red bg
+// ── Design Tokens (theme-aware) ─────────────────────────────────────────────────────
+// Serenity palette — warm paper (light) — deep ink (dark)
+private var _feedDark by mutableStateOf(VeilThemeManager.initialResolvedDark)
 
-// Avatar colors - subtle, professional pastels
-private val avatarColors = listOf(
-    Color(0xFFE3F2FD), Color(0xFFFCE4EC), Color(0xFFF3E5F5),
-    Color(0xFFE8F5E9), Color(0xFFFFF3E0), Color(0xFFE0F2F1),
+// Backgrounds
+private val FBg     get() = if (_feedDark) Color(0xFF0E0E12) else Color(0xFFFAF9F7)  // warm cream / deep ink
+private val FCard   get() = if (_feedDark) Color(0xFF16161C) else Color(0xFFFFFFFF)  // card surface
+private val FSurface get() = if (_feedDark) Color(0xFF1C1C24) else Color(0xFFF4F3F0) // subtle tint
+
+// Borders & dividers
+private val FBorder     get() = if (_feedDark) Color(0xFF252530) else Color(0xFFECEBE8)
+private val FBorderDark get() = if (_feedDark) Color(0xFF38384A) else Color(0xFFD8D6D2)
+
+// Typography
+private val FPrimary   get() = if (_feedDark) Color(0xFFE8E6E1) else Color(0xFF1A1916)  // warm near-black
+private val FSecondary get() = if (_feedDark) Color(0xFF8C8A88) else Color(0xFF7A7875)  // warm gray
+private val FMuted     get() = if (_feedDark) Color(0xFF565450) else Color(0xFFB8B5B0)  // muted warm
+
+// Accent — sage green (calm, nature, introspective)
+private val FAccent     = Color(0xFF6B8F71)   // sage green
+private val FAccentSoft get() = if (_feedDark) Color(0xFF0F1E11) else Color(0xFFEFF5F0)
+
+// Danger
+private val FRed     = Color(0xFFB85C5C)   // muted terracotta (not harsh)
+private val FRedSoft get() = if (_feedDark) Color(0xFF211212) else Color(0xFFFAEEEE)
+
+// Avatar palette — earthy, muted tones
+private val avatarColorsDark = listOf(
+    Color(0xFF1C2E1F), Color(0xFF2A1C28), Color(0xFF1C1A2E),
+    Color(0xFF2A2518), Color(0xFF1C2828), Color(0xFF2A1E1A),
 )
+private val avatarColorsLight = listOf(
+    Color(0xFFE8F0E9), Color(0xFFF0E8EF), Color(0xFFE9E8F2),
+    Color(0xFFF2EFE6), Color(0xFFE6F0EF), Color(0xFFF2EAE8),
+)
+private fun avatarColor(uid: String) =
+    (if (_feedDark) avatarColorsDark else avatarColorsLight)[kotlin.math.abs(uid.hashCode()) % 6]
 
-private fun avatarColor(uid: String): Color =
-    avatarColors[kotlin.math.abs(uid.hashCode()) % avatarColors.size]
+private val avatarTextColors = listOf(
+    Color(0xFF4A7850), Color(0xFF8F5C8A), Color(0xFF5C608F),
+    Color(0xFF8A7840), Color(0xFF407878), Color(0xFF8A5040),
+)
+private fun avatarTextColor(uid: String) =
+    avatarTextColors[kotlin.math.abs(uid.hashCode()) % avatarTextColors.size]
 
 private fun timeAgo(ms: Long): String {
     if (ms == 0L) return "now"
@@ -72,53 +101,102 @@ private fun timeAgo(ms: Long): String {
     }
 }
 
-// ── Screen Entry ──────────────────────────────────────────────────────────────
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+// ── Mood Filter Tags ──────────────────────────────────────────────────────────────────
+private val moodFilters = listOf("All", "Thoughts", "Feelings", "Connect", "Wins")
+
+// ── Screen ────────────────────────────────────────────────────────────────────
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IntrovertFeedScreen(
-    vm     : IntrovertFeedViewModel = viewModel(),
-    onBack : () -> Unit = {}
+    vm         : IntrovertFeedViewModel = viewModel(),
+    matchesVm  : MatchesViewModel       = viewModel(),   // for DM unread count
+    onBack     : () -> Unit = {},
+    onOpenDms  : () -> Unit = {}
 ) {
-    val posts        by vm.posts.collectAsStateWithLifecycle()
-    val loading      by vm.loading.collectAsStateWithLifecycle()
-    val unreadCount  by vm.unreadCount.collectAsStateWithLifecycle()
-    val notifs       by vm.notifs.collectAsStateWithLifecycle()
+    val posts          by vm.posts.collectAsStateWithLifecycle()
+    val loading        by vm.loading.collectAsStateWithLifecycle()
+    val unreadCount    by vm.unreadCount.collectAsStateWithLifecycle()
+    val notifs         by vm.notifs.collectAsStateWithLifecycle()
+    val scrollToTop    by vm.scrollToTop.collectAsStateWithLifecycle()
 
+    // ── Sync theme ── makes all F-token getters return correct dark/light color
+    val _veilIsDark = LocalVeilIsDark.current
+    SideEffect { _feedDark = _veilIsDark }
+
+    // DM unread count — includes both Feed friends AND Swipe connections
+    val unreadMatchIds by matchesVm.unreadMatchIds.collectAsStateWithLifecycle()
+    val friendMatches  by matchesVm.friendMatches.collectAsStateWithLifecycle()
+    val swipeMatches   by matchesVm.matches.collectAsStateWithLifecycle()
+    val unreadDmCount  = remember(unreadMatchIds, friendMatches, swipeMatches) {
+        (friendMatches + swipeMatches).count { it.matchId in unreadMatchIds }
+    }
+
+    val listState = rememberLazyListState()
+    val scope     = rememberCoroutineScope()
+
+    var selectedFilter  by remember { mutableStateOf("All") }
     var showCreatePost  by remember { mutableStateOf(false) }
     var reportTarget    by remember { mutableStateOf<String?>(null) }
     var showNotifPanel  by remember { mutableStateOf(false) }
+
+    val pagerState = rememberPagerState(pageCount = { 2 })
+
+    // Scroll-to-top on new post
+    LaunchedEffect(scrollToTop) {
+        if (scrollToTop) { listState.animateScrollToItem(0); vm.consumeScrollToTop() }
+    }
 
     Scaffold(
         containerColor = FBg,
         topBar = {
             FeedTopBar(
-                onBack       = onBack,
-                onCreatePost = { showCreatePost = true },
-                unreadCount  = unreadCount,
-                onNotif      = { showNotifPanel = true; vm.markAllNotifsRead() }
+                unreadCount    = unreadCount,
+                unreadDmCount  = unreadDmCount,
+                onNotif        = { showNotifPanel = true; vm.markAllNotifsRead() },
+                onCreatePost   = { showCreatePost = true },
+                onOpenDms      = onOpenDms,
+                selectedFilter = selectedFilter,
+                onFilterChange = { selectedFilter = it },
+                currentPage    = pagerState.currentPage,
+                onTabSelect    = { scope.launch { pagerState.animateScrollToPage(it) } }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick        = { showCreatePost = true },
-                containerColor = FAccent,
-                contentColor   = Color.White,
-                shape          = CircleShape
-            ) { Icon(Icons.Rounded.Add, "New Post", modifier = Modifier.size(26.dp)) }
+            // Only show on Posts page
+            if (pagerState.currentPage == 0) {
+                FloatingActionButton(
+                    onClick        = { showCreatePost = true },
+                    containerColor = FAccent,
+                    contentColor   = Color.White,
+                    shape          = CircleShape
+                ) { Icon(Icons.Rounded.EditNote, null, modifier = Modifier.size(24.dp)) }
+            }
         }
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when {
-                loading && posts.isEmpty() -> FeedShimmer()
-                posts.isEmpty()            -> FeedEmpty()
-                else -> FeedContent(
-                    posts         = posts,
-                    vm            = vm,
-                    myConnections = vm.myConnections.collectAsStateWithLifecycle().value,
-                    myUid         = FirebaseAuth.getInstance().currentUser?.uid ?: "",
-                    onLike        = { postId -> vm.toggleLike(postId) },
-                    onReport      = { postId -> reportTarget = postId }
-                )
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            HorizontalPager(
+                state             = pagerState,
+                modifier          = Modifier.fillMaxSize(),
+                userScrollEnabled = true
+            ) { page ->
+                when (page) {
+                    0 -> Box(Modifier.fillMaxSize()) {
+                        when {
+                            loading && posts.isEmpty() -> FeedShimmer()
+                            posts.isEmpty()            -> FeedEmpty()
+                            else -> FeedContent(
+                                posts         = posts,
+                                vm            = vm,
+                                listState     = listState,
+                                myConnections = vm.myConnections.collectAsStateWithLifecycle().value,
+                                myUid         = FirebaseAuth.getInstance().currentUser?.uid ?: "",
+                                onLike        = { vm.toggleLike(it) },
+                                onReport      = { reportTarget = it }
+                            )
+                        }
+                    }
+                    else -> VeilSparksScreen()
+                }
             }
         }
     }
@@ -140,50 +218,238 @@ fun IntrovertFeedScreen(
     }
 }
 
-// ── Top Bar (Instagram style) ─────────────────────────────────────────────────
+// ── Top Bar ─────────────────────────────────────────────────────────────────────────────
 @Composable
 private fun FeedTopBar(
-    onBack      : () -> Unit,
-    onCreatePost: () -> Unit,
-    unreadCount : Int = 0,
-    onNotif     : () -> Unit
+    unreadCount    : Int,
+    unreadDmCount  : Int = 0,
+    onNotif        : () -> Unit,
+    onCreatePost   : () -> Unit,
+    onOpenDms      : () -> Unit = {},
+    selectedFilter : String,
+    onFilterChange : (String) -> Unit,
+    currentPage    : Int,
+    onTabSelect    : (Int) -> Unit
 ) {
-    Column {
-        Row(
-            Modifier.fillMaxWidth().background(FBg).padding(horizontal = 16.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("Introvert Thoughts", fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = FPrimary, letterSpacing = (-0.3).sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                // New post
-                IconButton(onClick = onCreatePost, modifier = Modifier.size(40.dp).clip(CircleShape).background(FAccent)) {
-                    Icon(Icons.Rounded.Add, null, tint = Color.White, modifier = Modifier.size(24.dp))
-                }
-                // Notification bell
-                Box {
-                    IconButton(onClick = onNotif, modifier = Modifier.size(40.dp).clip(CircleShape).border(1.dp, FBorder, CircleShape)) {
-                        Icon(Icons.Rounded.Notifications, null, tint = FPrimary, modifier = Modifier.size(22.dp))
-                    }
-                    if (unreadCount > 0) {
+    val showFilters = currentPage == 0
+    Surface(
+        color           = FCard,
+        shadowElevation = 0.dp,
+        modifier        = Modifier.fillMaxWidth()
+    ) {
+        Column {
+            // ── Masthead row ─────────────────────────────────────────────────────
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp)
+                    .padding(top = 18.dp, bottom = 10.dp),
+                verticalAlignment     = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Brand block
+                Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Row(
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Small sage dot
                         Box(
-                            Modifier.size(9.dp).clip(CircleShape).background(FRed)
-                                .align(Alignment.TopEnd).offset(x = (-4).dp, y = 4.dp)
+                            Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(FAccent)
+                        )
+                        Text(
+                            "Quiet Space",
+                            fontSize      = 18.sp,
+                            fontWeight    = FontWeight.Bold,
+                            color         = FPrimary,
+                            letterSpacing = (-0.3).sp
+                        )
+                    }
+                    Text(
+                        "anonymous · thoughtful · safe",
+                        fontSize      = 11.sp,
+                        color         = FMuted,
+                        letterSpacing = 0.3.sp
+                    )
+                }
+
+                // Action icons — soft and minimal
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment     = Alignment.CenterVertically
+                ) {
+                    // DM icon
+                    Box {
+                        IconButton(onClick = onOpenDms, modifier = Modifier.size(40.dp)) {
+                            Icon(
+                                Icons.Rounded.MailOutline,
+                                contentDescription = "Messages",
+                                tint     = if (unreadDmCount > 0) FAccent else FMuted,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        if (unreadDmCount > 0) {
+                            Box(
+                                Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(FAccent)
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = (-3).dp, y = 3.dp)
+                                    .border(1.dp, FCard, CircleShape)
+                            )
+                        }
+                    }
+                    // Notif icon
+                    Box {
+                        IconButton(onClick = onNotif, modifier = Modifier.size(40.dp)) {
+                            Icon(
+                                Icons.Rounded.NotificationsNone, null,
+                                tint     = if (unreadCount > 0) FAccent else FMuted,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        if (unreadCount > 0) {
+                            Box(
+                                Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(FAccent)
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = (-3).dp, y = 3.dp)
+                                    .border(1.dp, FCard, CircleShape)
+                            )
+                        }
+                    }
+                    // Compose
+                    IconButton(onClick = onCreatePost, modifier = Modifier.size(40.dp)) {
+                        Icon(
+                            Icons.Rounded.EditNote, null,
+                            tint     = FPrimary,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
             }
+
+            // ── Tab row ─────────────────────────────────────────────────────
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp)
+            ) {
+                listOf("Thoughts" to Icons.Rounded.Forum, "Sparks" to Icons.Rounded.AutoAwesome)
+                    .forEachIndexed { idx, (title, icon) ->
+                        val selected = currentPage == idx
+                        Column(
+                            Modifier
+                                .weight(1f)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication        = null
+                                ) { onTabSelect(idx) }
+                                .padding(vertical = 10.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    icon, null,
+                                    tint = if (selected) FAccent else FMuted,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    title,
+                                    fontSize   = 13.sp,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                    color      = if (selected) FAccent else FMuted
+                                )
+                            }
+                            // Underline indicator
+                            val indicatorWidth by animateDpAsState(
+                                targetValue   = if (selected) 24.dp else 0.dp,
+                                animationSpec = tween(200),
+                                label         = "tab_ind_$idx"
+                            )
+                            Box(
+                                Modifier
+                                    .width(indicatorWidth)
+                                    .height(1.5.dp)
+                                    .background(FAccent, RoundedCornerShape(1.dp))
+                            )
+                        }
+                    }
+            }
+
+            // ── Mood filter tags (Posts tab only) ─────────────────────────────
+            AnimatedVisibility(
+                visible = showFilters,
+                enter   = fadeIn() + expandVertically(),
+                exit    = fadeOut() + shrinkVertically()
+            ) {
+                LazyRow(
+                    contentPadding        = PaddingValues(horizontal = 18.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier              = Modifier.padding(top = 2.dp, bottom = 10.dp)
+                ) {
+                    items(moodFilters) { label ->
+                        val selected = label == selectedFilter
+                        val indicatorAlpha by animateFloatAsState(
+                            targetValue = if (selected) 1f else 0f,
+                            animationSpec = tween(160),
+                            label = "filterAlpha"
+                        )
+                        Column(
+                            Modifier
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication        = null
+                                ) { onFilterChange(label) }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Text(
+                                label,
+                                fontSize   = 12.sp,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                color      = if (selected) FPrimary else FMuted
+                            )
+                            Box(
+                                Modifier
+                                    .width(16.dp)
+                                    .height(1.dp)
+                                    .background(FAccent.copy(alpha = indicatorAlpha))
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Bottom hairline
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(0.5.dp)
+                    .background(FBorder)
+            )
         }
-        Divider(color = FBorder, thickness = 0.5.dp)
     }
 }
 
-// ── Feed Content (Scrollable Posts) ───────────────────────────────────────────
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun FeedContent(
     posts         : List<IntrovertPost>,
     vm            : IntrovertFeedViewModel,
+    listState     : LazyListState,
     myConnections : Set<String>,
     myUid         : String,
     onLike        : (String) -> Unit,
@@ -191,12 +457,21 @@ private fun FeedContent(
 ) {
     var isRefreshing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
     androidx.compose.material3.pulltorefresh.PullToRefreshBox(
         isRefreshing = isRefreshing,
-        onRefresh    = { isRefreshing = true; vm.refreshPosts(); scope.launch { delay(1200); isRefreshing = false } },
-        modifier     = Modifier.fillMaxSize()
+        onRefresh    = {
+            isRefreshing = true
+            vm.refreshPosts()
+            scope.launch { delay(1200); isRefreshing = false }
+        },
+        modifier = Modifier.fillMaxSize()
     ) {
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(0.dp)) {
+        LazyColumn(
+            state             = listState,
+            modifier          = Modifier.fillMaxSize().background(FBg),
+            contentPadding    = PaddingValues(bottom = 88.dp)
+        ) {
             items(posts, key = { it.postId }) { post ->
                 PostCard(
                     post        = post,
@@ -207,14 +482,13 @@ private fun FeedContent(
                     onReport    = { onReport(post.postId) },
                     onConnect   = { vm.sendConnect(post.authorId, post.authorAlias) }
                 )
-                Divider(color = FBorder, thickness = 0.5.dp)
             }
-            item { Spacer(Modifier.height(80.dp)) }
+            item { Spacer(Modifier.height(88.dp)) }
         }
     }
 }
 
-// ── Post Card (Instagram-inspired) ────────────────────────────────────────────
+// ── Post Card — Journal / Thought Board aesthetic ───────────────────────────────────────
 @Composable
 private fun PostCard(
     post        : IntrovertPost,
@@ -228,309 +502,309 @@ private fun PostCard(
     var showMenu     by remember { mutableStateOf(false) }
     var showComments by rememberSaveable { mutableStateOf(false) }
 
-    val shimInf = rememberInfiniteTransition(label = "csf_${post.postId}")
-    val shimX by shimInf.animateFloat(
-        -200f, 600f,
-        infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Restart),
-        "csx_${post.postId}"
-    )
-
-    val likeScale by animateFloatAsState(
-        if (post.isLiked) 1.1f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
-        label = "likeScale"
-    )
-
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .background(FBg)
-            .padding(vertical = 12.dp)
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { visible = true }
+    AnimatedVisibility(
+        visible = visible,
+        enter   = fadeIn(tween(320))
     ) {
-        // Header: Avatar + Name + Time + Menu (Single line like Instagram/X)
-        Row(
-            Modifier
+        Column(
+            modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(horizontal = 16.dp, vertical = 5.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(FCard)
+                .border(1.dp, FBorder, RoundedCornerShape(16.dp))
         ) {
+            // ── Top row: timestamp + menu ─────────────────────────────────────
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment     = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Anonymous avatar
-                Box(
-                    Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(avatarColor(post.authorId)),
-                    contentAlignment = Alignment.Center
-                ) {
+                Text(
+                    timeAgo(post.createdAt),
+                    fontSize = 10.sp,
+                    color    = FMuted,
+                    letterSpacing = 0.3.sp
+                )
+
+                // Three-dot menu
+                Box {
+                    IconButton(
+                        onClick  = { showMenu = true },
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.MoreHoriz, null,
+                            tint     = FMuted,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                    DropdownMenu(
+                        expanded         = showMenu,
+                        onDismissRequest = { showMenu = false },
+                        modifier         = Modifier.background(FCard)
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment     = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Rounded.Flag, null,
+                                        tint = FRed, modifier = Modifier.size(14.dp))
+                                    Text("Report post", color = FRed,
+                                        fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                }
+                            },
+                            onClick = { showMenu = false; onReport() }
+                        )
+                    }
+                }
+            }
+
+            // ── Content — the thought is the hero ────────────────────────────
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 14.dp, end = 14.dp, bottom = 14.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    // Opening quote mark — editorial touch
                     Text(
-                        post.authorAlias.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = FPrimary.copy(alpha = 0.6f)
+                        "\u201C",
+                        fontSize   = 36.sp,
+                        color      = FAccent.copy(alpha = 0.35f),
+                        fontWeight = FontWeight.ExtraBold,
+                        lineHeight = 20.sp
+                    )
+                    Text(
+                        post.content,
+                        fontSize      = 15.sp,
+                        color         = FPrimary,
+                        lineHeight    = 24.sp,
+                        letterSpacing = (-0.1).sp,
+                        modifier      = Modifier.padding(top = 2.dp)
                     )
                 }
-                
-                // Name and time + Connect button
+            }
+
+            // ── Hairline ──────────────────────────────────────────────────────
+            Box(Modifier.fillMaxWidth().height(0.5.dp).background(FBorder))
+
+            // ── Footer: author info + actions ─────────────────────────────────
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment     = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Author chip — compact, left-aligned
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                    verticalAlignment     = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    // Tiny monogram
+                    Box(
+                        Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(avatarColor(post.authorId)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            post.authorAlias.firstOrNull()?.uppercaseChar()?.toString() ?: "◦",
+                            fontSize   = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color      = avatarTextColor(post.authorId)
+                        )
+                    }
                     Text(
                         post.authorAlias,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = FPrimary,
-                        letterSpacing = (-0.2).sp
+                        fontSize      = 11.sp,
+                        fontWeight    = FontWeight.Medium,
+                        color         = FSecondary,
+                        letterSpacing = (-0.1).sp
                     )
-                    Text("•", fontSize = 12.sp, color = FSecondary)
-                    Text(
-                        timeAgo(post.createdAt),
-                        fontSize = 12.sp,
-                        color = FSecondary
-                    )
-                    // Connect / Connected pill (hidden for own posts)
-                    if (!isOwnPost) {
-                        val connected = isConnected
+                    if (!isOwnPost && !isConnected) {
                         Box(
                             Modifier
                                 .clip(RoundedCornerShape(20.dp))
-                                .background(if (connected) FAccentSoft else FAccent)
-                                .drawWithContent {
-                                    drawContent()
-                                    if (!connected) {
-                                        val br = Brush.linearGradient(
-                                            listOf(Color(0x000095F6), Color(0x550095F6), Color(0x000095F6)),
-                                            androidx.compose.ui.geometry.Offset(shimX, 0f),
-                                            androidx.compose.ui.geometry.Offset(shimX + 80f, size.height)
-                                        )
-                                        drawRect(brush = br)
-                                    }
-                                }
-                                .clickable(enabled = !connected, onClick = onConnect)
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                .border(0.7.dp, FAccent.copy(0.4f), RoundedCornerShape(20.dp))
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = onConnect
+                                )
+                                .padding(horizontal = 7.dp, vertical = 2.dp)
                         ) {
                             Text(
-                                if (connected) "Connected ✓" else "Connect",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (connected) FAccent else Color.White
+                                "+ connect",
+                                fontSize   = 9.sp,
+                                color      = FAccent,
+                                fontWeight = FontWeight.Medium
                             )
                         }
+                    } else if (!isOwnPost && isConnected) {
+                        Text(
+                            "· friend",
+                            fontSize = 10.sp,
+                            color    = FAccent.copy(0.7f)
+                        )
                     }
-                }
-            }
-            
-            // ── Three-dot menu
-            Box {
-                IconButton(
-                    onClick = { showMenu = true },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        Icons.Rounded.MoreVert,
-                        null,
-                        tint = FSecondary,
-                        modifier = Modifier.size(20.dp)
-                    )
                 }
 
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false },
-                    modifier = Modifier.background(Color.White)
+                // Action icons — comment + share only (no likes)
+                val context = LocalContext.current
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment     = Alignment.CenterVertically
                 ) {
-                    // Report option
-                    DropdownMenuItem(
-                        text = {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Rounded.Flag,
-                                    contentDescription = null,
-                                    tint = FRed,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    "Report",
-                                    color = FRed,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
+                    IconButton(
+                        onClick  = { showComments = !showComments },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            if (showComments) Icons.Rounded.ChatBubble else Icons.Rounded.ChatBubbleOutline,
+                            null,
+                            tint     = if (showComments) FAccent else FMuted,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick  = {
+                            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(android.content.Intent.EXTRA_TEXT,
+                                    "\"${post.content}\"\n\n— from Veil")
                             }
+                            context.startActivity(android.content.Intent.createChooser(intent, "Share"))
                         },
-                        onClick = {
-                            showMenu = false
-                            onReport()
-                        }
-                    )
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.IosShare, null,
+                            tint     = FMuted,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
                 }
             }
-        }
-        
-        // Content - No extra top padding, flows naturally after header
-        Text(
-            post.content,
-            fontSize = 15.sp,
-            color = FPrimary,
-            lineHeight = 22.sp,
-            letterSpacing = (-0.1).sp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 12.dp)
-        )
-        
-        // Action bar
-        val context = LocalContext.current
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            // Like
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.clip(RoundedCornerShape(8.dp))
-                    .clickable(remember { MutableInteractionSource() }, null) { onLike() }
-                    .padding(horizontal = 8.dp, vertical = 10.dp)
-            ) {
-                Icon(
-                    if (post.isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                    null, tint = if (post.isLiked) FRed else FSecondary,
-                    modifier = Modifier.size(22.dp).graphicsLayer { scaleX = likeScale; scaleY = likeScale }
-                )
-                if (post.likeCount > 0) Text(
-                    "${post.likeCount}", fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium, color = if (post.isLiked) FRed else FSecondary
-                )
+
+            // Comments section
+            if (showComments) {
+                Box(Modifier.fillMaxWidth().height(0.5.dp).background(FBorder))
+                CommentSection(postId = post.postId, vm = vm)
             }
-            // Comment
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.clip(RoundedCornerShape(8.dp))
-                    .clickable(remember { MutableInteractionSource() }, null) { showComments = !showComments }
-                    .padding(horizontal = 8.dp, vertical = 10.dp)
-            ) {
-                Icon(Icons.Rounded.ChatBubbleOutline, null,
-                    tint = if (showComments) FAccent else FSecondary, modifier = Modifier.size(22.dp))
-                if (post.commentCount > 0) Text(
-                    "${post.commentCount}", fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium, color = if (showComments) FAccent else FSecondary
-                )
-            }
-            // Share
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.clip(RoundedCornerShape(8.dp))
-                    .clickable(remember { MutableInteractionSource() }, null) {
-                        val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(android.content.Intent.EXTRA_TEXT,
-                                "\"${post.content}\"\n\n— shared from Veil")
-                        }
-                        context.startActivity(android.content.Intent.createChooser(shareIntent, "Share thought"))
-                    }
-                    .padding(horizontal = 8.dp, vertical = 10.dp)
-            ) {
-                Icon(Icons.Rounded.Share, null, tint = FSecondary, modifier = Modifier.size(22.dp))
-            }
-        }
-        // Comments section
-        if (showComments) {
-            CommentSection(postId = post.postId, vm = vm)
         }
     }
 }
 
+
 // ── Post Report Dialog ────────────────────────────────────────────────────────
 @Composable
 private fun PostReportDialog(
-    onDismiss: () -> Unit,
-    onSubmit: (reason: String, note: String) -> Unit
+    onDismiss : () -> Unit,
+    onSubmit  : (reason: String, note: String) -> Unit
 ) {
     var selectedReason by remember { mutableStateOf("") }
     var note           by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(20.dp),
-        containerColor = Color.White,
+        shape            = RoundedCornerShape(20.dp),
+        containerColor   = FCard,
         title = {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.Flag, null, tint = FRed, modifier = Modifier.size(20.dp))
-                Text("Report Post", fontWeight = FontWeight.SemiBold, fontSize = 18.sp, color = FPrimary)
+                Text("Report Post", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = FPrimary)
             }
         },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("What's wrong with this post?", fontSize = 13.sp, color = FSecondary)
+            Column(
+                Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("What's wrong with this post?", fontSize = 13.sp, color = FSecondary,
+                    modifier = Modifier.padding(bottom = 4.dp))
                 VeilSafetyUtil.POST_REPORT_REASONS.forEach { reason ->
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (selectedReason == reason) FRedSoft else Color(0xFFF9FAFB))
-                            .border(1.dp, if (selectedReason == reason) FRed.copy(0.35f) else FBorder, RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (selectedReason == reason) FRedSoft else FSurface)
+                            .border(1.dp,
+                                if (selectedReason == reason) FRed.copy(0.30f) else FBorder,
+                                RoundedCornerShape(12.dp))
                             .clickable { selectedReason = reason }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         RadioButton(
                             selected = selectedReason == reason,
                             onClick  = { selectedReason = reason },
                             colors   = RadioButtonDefaults.colors(selectedColor = FRed)
                         )
-                        Text(reason, fontSize = 13.sp, color = FPrimary)
+                        Text(reason, fontSize = 13.sp, color = FPrimary, fontWeight = FontWeight.Medium)
                     }
                 }
                 OutlinedTextField(
-                    value = note,
+                    value         = note,
                     onValueChange = { if (it.length <= 200) note = it },
-                    placeholder = { Text("Add details (optional)", fontSize = 13.sp, color = FMuted) },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2, maxLines = 3,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = FRed, unfocusedBorderColor = FBorder,
-                        focusedContainerColor = Color.White, unfocusedContainerColor = Color.White
+                    placeholder   = { Text("Additional details (optional)", fontSize = 13.sp, color = FMuted) },
+                    modifier      = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    minLines      = 2,
+                    maxLines      = 3,
+                    shape         = RoundedCornerShape(12.dp),
+                    colors        = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor      = FRed,
+                        unfocusedBorderColor    = FBorderDark,
+                        focusedContainerColor   = FCard,
+                        unfocusedContainerColor = FCard
                     )
                 )
-                Text(
-                    "⚠️ False reports may result in action against your own account.",
-                    fontSize = 11.sp, color = FSecondary
-                )
+                Row(
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier              = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(FSurface)
+                        .padding(10.dp)
+                ) {
+                    Icon(Icons.Rounded.Info, null, tint = FSecondary, modifier = Modifier.size(14.dp))
+                    Text("False reports may result in action against your account.",
+                        fontSize = 11.sp, color = FSecondary, lineHeight = 16.sp)
+                }
             }
         },
         confirmButton = {
             Button(
-                onClick = { if (selectedReason.isNotBlank()) onSubmit(selectedReason, note) },
-                enabled = selectedReason.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = FRed),
-                shape = RoundedCornerShape(10.dp)
-            ) { Text("Submit Report", fontWeight = FontWeight.SemiBold) }
+                onClick  = { if (selectedReason.isNotBlank()) onSubmit(selectedReason, note) },
+                enabled  = selectedReason.isNotBlank(),
+                colors   = ButtonDefaults.buttonColors(containerColor = FRed),
+                shape    = RoundedCornerShape(12.dp),
+                modifier = Modifier.height(44.dp)
+            ) { Text("Submit Report", fontWeight = FontWeight.SemiBold, fontSize = 14.sp) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = FSecondary) }
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = FSecondary, fontWeight = FontWeight.Medium)
+            }
         }
     )
 }
 
-// ── Create Post — Professional Bottom Sheet ────────────────────────────────────
+// ── Create Post Dialog ────────────────────────────────────────────────────────
 @Composable
 private fun CreatePostDialog(
-    onDismiss: () -> Unit,
-    onPost: (String) -> Unit
+    onDismiss : () -> Unit,
+    onPost    : (String) -> Unit
 ) {
     var content        by remember { mutableStateOf("") }
     var showBanWarning by remember { mutableStateOf(false) }
@@ -542,90 +816,142 @@ private fun CreatePostDialog(
     if (showBanWarning) {
         AlertDialog(
             onDismissRequest = { showBanWarning = false },
-            confirmButton = { TextButton(onClick = { showBanWarning = false }) { Text("Got it") } },
-            title = { Text("🚨 Content Violation", fontWeight = FontWeight.Bold, color = FRed) },
-            text = { Text("Vulgar, explicit, or abusive content leads to a permanent ban. Please revise your post.", fontSize = 14.sp, lineHeight = 21.sp) },
-            shape = RoundedCornerShape(20.dp), containerColor = Color.White
+            confirmButton    = { TextButton(onClick = { showBanWarning = false }) { Text("Got it", fontWeight = FontWeight.SemiBold) } },
+            title  = { Text("⚠️ Content Violation", fontWeight = FontWeight.Bold, color = FRed) },
+            text   = { Text("Vulgar or abusive content leads to a permanent ban. Please revise.", fontSize = 14.sp, lineHeight = 21.sp, color = FPrimary) },
+            shape  = RoundedCornerShape(20.dp),
+            containerColor = FCard
         )
     }
 
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+        properties       = androidx.compose.ui.window.DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows  = false
+        )
     ) {
         Box(
-            Modifier.fillMaxSize().background(Color.Black.copy(0.5f))
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(0.55f))
                 .clickable(remember { MutableInteractionSource() }, null) { onDismiss() },
             contentAlignment = Alignment.BottomCenter
         ) {
             Column(
-                Modifier.fillMaxWidth()
+                Modifier
+                    .fillMaxWidth()
                     .fillMaxHeight(0.92f)
-                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                    .background(Color.White)
+                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                    .background(FCard)
                     .clickable(remember { MutableInteractionSource() }, null) {}
                     .imePadding()
             ) {
-                // ── Sheet handle ────────────────────────────────────────────
-                Box(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp), Alignment.Center) {
-                    Box(Modifier.width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(FMuted))
+                // ── Handle ────────────────────────────────────────────────────
+                Box(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 6.dp), Alignment.Center) {
+                    Box(Modifier.width(40.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(FMuted))
                 }
 
-                // ── Top bar ─────────────────────────────────────────────────
+                // ── Action row ────────────────────────────────────────────────
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .padding(top = 6.dp, bottom = 14.dp),
+                    verticalAlignment     = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    TextButton(onClick = onDismiss, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                    TextButton(
+                        onClick         = onDismiss,
+                        contentPadding  = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                    ) {
                         Text("Cancel", fontSize = 15.sp, color = FPrimary, fontWeight = FontWeight.Normal)
                     }
-                    Text("New Post", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = FPrimary)
+                    Text("New Thought", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = FPrimary)
                     Box(
-                        Modifier.clip(RoundedCornerShape(20.dp))
-                            .background(if (content.trim().length >= 10 && !hasProfanity) FAccent else FMuted)
-                            .clickable(enabled = content.trim().length >= 10 && !hasProfanity) {
+                        Modifier
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(
+                                if (content.trim().length >= 10 && !hasProfanity) FAccent
+                                else FMuted
+                            )
+                            .clickable(
+                                enabled           = content.trim().length >= 10 && !hasProfanity,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication        = null
+                            ) {
                                 val t = content.trim()
                                 if (VeilSafetyUtil.containsProfanity(t)) showBanWarning = true
                                 else onPost(t)
-                            }.padding(horizontal = 18.dp, vertical = 8.dp)
+                            }
+                            .padding(horizontal = 20.dp, vertical = 10.dp)
                     ) {
                         Text("Post", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
-                HorizontalDivider(color = FBorder, thickness = 0.5.dp)
 
-                // ── Author row + text area ───────────────────────────────────
+                HorizontalDivider(color = FBorder, thickness = 1.dp)
+
+                // ── Author + Input ────────────────────────────────────────────
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Avatar
                     Box(
-                        Modifier.size(40.dp).clip(CircleShape).background(avatarColor(myUid)),
+                        Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(avatarColor(myUid)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("✦", fontSize = 18.sp, color = FPrimary.copy(0.5f))
+                        Text("✦", fontSize = 18.sp, color = avatarTextColor(myUid))
                     }
+
                     Column(Modifier.weight(1f)) {
-                        Text("Anonymous", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = FPrimary)
-                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            verticalAlignment     = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier              = Modifier.padding(bottom = 10.dp)
+                        ) {
+                            Text("Anonymous", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = FPrimary)
+                            Box(
+                                Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(FAccentSoft)
+                                    .border(1.dp, FAccent.copy(0.25f), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment     = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(Icons.Rounded.Lock, null, tint = FAccent, modifier = Modifier.size(10.dp))
+                                    Text("Private", fontSize = 11.sp, color = FAccent, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
                         BasicTextField(
-                            value = content,
+                            value         = content,
                             onValueChange = {
                                 if (it.length <= maxLength) {
                                     content = it
                                     hasProfanity = VeilSafetyUtil.containsProfanity(it)
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 120.dp)
+                            modifier      = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = 120.dp)
                                 .focusRequester(focusReq),
-                            textStyle = LocalTextStyle.current.copy(
-                                fontSize = 16.sp, color = FPrimary, lineHeight = 24.sp
+                            textStyle     = LocalTextStyle.current.copy(
+                                fontSize   = 16.sp,
+                                color      = FPrimary,
+                                lineHeight = 24.sp
                             ),
                             decorationBox = { inner ->
                                 if (content.isEmpty()) Text(
-                                    "What's on your introvert mind?",
+                                    "What's on your introvert mind…",
                                     fontSize = 16.sp, color = FMuted, lineHeight = 24.sp
                                 )
                                 inner()
@@ -634,359 +960,231 @@ private fun CreatePostDialog(
                     }
                 }
 
-                // ── Footer: warnings + char count ────────────────────────────
                 Spacer(Modifier.weight(1f))
 
+                // ── Footer ────────────────────────────────────────────────────
                 if (hasProfanity) {
                     Row(
-                        Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .padding(bottom = 8.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(FRedSoft)
+                            .border(1.dp, FRed.copy(0.25f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment     = Alignment.CenterVertically
                     ) {
                         Icon(Icons.Rounded.Warning, null, tint = FRed, modifier = Modifier.size(14.dp))
-                        Text("Content violates community guidelines", fontSize = 12.sp, color = FRed)
+                        Text("Content violates community guidelines", fontSize = 12.sp, color = FRed, fontWeight = FontWeight.Medium)
                     }
                 }
 
+                HorizontalDivider(color = FBorder, thickness = 1.dp)
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
-                        .background(Color.White),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    Modifier
+                        .fillMaxWidth()
+                        .background(FCard)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment     = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(Icons.Rounded.Lock, null, tint = FAccent, modifier = Modifier.size(14.dp))
-                        Text("Anonymous post", fontSize = 12.sp, color = FAccent, fontWeight = FontWeight.Medium)
+                    Row(
+                        verticalAlignment     = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(Icons.Rounded.Forum, null, tint = FSecondary, modifier = Modifier.size(14.dp))
+                        Text("Visible to all introverts", fontSize = 12.sp, color = FSecondary)
                     }
-                    // Circular char counter
-                    val fraction = content.length.toFloat() / maxLength
-                    val counterColor = when {
-                        fraction >= 1f   -> FRed
+                    // Char counter ring
+                    val remaining  = maxLength - content.length
+                    val fraction   = content.length.toFloat() / maxLength
+                    val cColor     = when {
+                        fraction >= 1f    -> FRed
                         fraction >= 0.85f -> FRed.copy(0.7f)
-                        else              -> FMuted
+                        else             -> FSecondary
                     }
                     Text(
-                        "${maxLength - content.length}",
-                        fontSize = 12.sp, color = counterColor, fontWeight = FontWeight.Medium
+                        "$remaining",
+                        fontSize   = 12.sp,
+                        color      = cColor,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
-                HorizontalDivider(color = FBorder, thickness = 0.3.dp)
             }
         }
     }
     LaunchedEffect(Unit) { runCatching { focusReq.requestFocus() } }
 }
 
-// ── Empty State ───────────────────────────────────────────────────────────────
-
+// ── Empty State ───────────────────────────────────────────────────────────────────────────
 @Composable
 private fun FeedEmpty() {
-    Box(
-        Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.padding(32.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier            = Modifier.padding(40.dp)
         ) {
-            Box(
-                Modifier
-                    .size(80.dp)
-                    .clip(CircleShape)
-                    .border(2.dp, FBorder, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Rounded.Forum,
-                    null,
-                    tint = FSecondary,
-                    modifier = Modifier.size(36.dp)
-                )
-            }
+            // Leaf / serene icon
+            Text("🌿", fontSize = 44.sp)
             Text(
-                "No posts yet",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = FPrimary,
-                textAlign = TextAlign.Center
+                "This space is quiet",
+                fontSize   = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color      = FPrimary,
+                textAlign  = TextAlign.Center,
+                letterSpacing = (-0.5).sp
             )
             Text(
-                "Be the first to share your\nintrovert thoughts",
-                fontSize = 14.sp,
-                color = FSecondary,
+                "Be the first to share a thought.\nYour name stays hidden — always.",
+                fontSize  = 14.sp,
+                color     = FSecondary,
                 textAlign = TextAlign.Center,
-                lineHeight = 20.sp
             )
         }
     }
 }
 
-// ── Shimmer Loading ───────────────────────────────────────────────────────────
+// ── Shimmer ───────────────────────────────────────────────────────────────────
 @Composable
 private fun FeedShimmer() {
     val inf = rememberInfiniteTransition(label = "shimmer")
     val alpha by inf.animateFloat(
-        0.3f, 0.7f,
-        infiniteRepeatable(tween(1000, easing = LinearEasing), RepeatMode.Reverse),
+        0.25f, 0.6f,
+        infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Reverse),
         "alpha"
     )
-    
+
     LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier            = Modifier.fillMaxSize().background(FBg),
+        contentPadding      = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         items(5) {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+            Surface(
+                shape           = RoundedCornerShape(16.dp),
+                color           = FCard,
+                border          = BorderStroke(1.dp, FBorder),
+                shadowElevation = 2.dp
             ) {
-                // Header
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    Modifier.fillMaxWidth().padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Box(
-                        Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(FMuted.copy(alpha = alpha))
-                    )
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Box(
-                            Modifier
-                                .width(100.dp)
-                                .height(14.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(FMuted.copy(alpha = alpha))
-                        )
-                        Box(
-                            Modifier
-                                .width(60.dp)
-                                .height(12.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(FMuted.copy(alpha = alpha))
-                        )
+                    // Header
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(44.dp).clip(CircleShape).background(FMuted.copy(alpha)))
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(Modifier.width(110.dp).height(14.dp).clip(RoundedCornerShape(7.dp)).background(FMuted.copy(alpha)))
+                            Box(Modifier.width(60.dp).height(12.dp).clip(RoundedCornerShape(7.dp)).background(FMuted.copy(alpha * 0.7f)))
+                        }
+                    }
+                    HorizontalDivider(color = FBorder, thickness = 1.dp)
+                    // Content lines
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Box(Modifier.fillMaxWidth().height(15.dp).clip(RoundedCornerShape(7.dp)).background(FMuted.copy(alpha)))
+                        Box(Modifier.fillMaxWidth(0.88f).height(15.dp).clip(RoundedCornerShape(7.dp)).background(FMuted.copy(alpha)))
+                        Box(Modifier.fillMaxWidth(0.60f).height(15.dp).clip(RoundedCornerShape(7.dp)).background(FMuted.copy(alpha * 0.6f)))
+                    }
+                    HorizontalDivider(color = FBorder, thickness = 1.dp)
+                    // Action bar
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                        repeat(3) {
+                            Box(Modifier.width(48.dp).height(12.dp).clip(RoundedCornerShape(6.dp)).background(FMuted.copy(alpha * 0.7f)))
+                        }
                     }
                 }
-                
-                // Content
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(16.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(FMuted.copy(alpha = alpha))
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth(0.9f)
-                            .height(16.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(FMuted.copy(alpha = alpha))
-                    )
-                    Box(
-                        Modifier
-                            .fillMaxWidth(0.7f)
-                            .height(16.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(FMuted.copy(alpha = alpha))
-                    )
-                }
-            }
-            Divider(color = FBorder, thickness = 0.5.dp)
-        }
-    }
-}
-
-// ── Instagram-Style Bottom Sheet Menu ─────────────────────────────────────────
-@Composable
-private fun InstagramStyleMenu(
-    onDismiss: () -> Unit,
-    onReport: () -> Unit
-) {
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false
-        )
-    ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.5f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) { onDismiss() },
-            contentAlignment = Alignment.BottomCenter
-        ) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                    .background(Color.White)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { /* Prevent click through */ }
-            ) {
-                // Handle bar
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        Modifier
-                            .width(40.dp)
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(FMuted)
-                    )
-                }
-                
-                // Menu items
-                Column(Modifier.fillMaxWidth()) {
-                    // Report option
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { onReport() }
-                            .padding(horizontal = 20.dp, vertical = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        Icon(
-                            Icons.Rounded.Flag,
-                            null,
-                            tint = FRed,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Text(
-                            "Report",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = FRed
-                        )
-                    }
-                    
-                    Divider(color = FBorder, thickness = 0.5.dp)
-                    
-                    // Cancel option
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable { onDismiss() }
-                            .padding(horizontal = 20.dp, vertical = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            "Cancel",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = FSecondary
-                        )
-                    }
-                }
-                
-                Spacer(Modifier.height(20.dp))
             }
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  @mention text renderer
-// ─────────────────────────────────────────────────────────────────────────────
-@Composable
-private fun MentionText(text: String, modifier: Modifier = Modifier, sz: TextUnit = 14.sp) {
-    val annotated = buildAnnotatedString {
-        var i = 0
-        while (i < text.length) {
-            if (text[i] == '@') {
-                val end = text.indexOfFirst { idx -> idx == ' ' || idx == '\n' }.let {
-                    val spaceIdx = text.indexOf(' ', i); val nlIdx = text.indexOf('\n', i)
-                    when { spaceIdx == -1 && nlIdx == -1 -> text.length; spaceIdx == -1 -> nlIdx; nlIdx == -1 -> spaceIdx; else -> minOf(spaceIdx, nlIdx) }
-                }
-                withStyle(SpanStyle(color = FAccent, fontWeight = FontWeight.Medium)) { append(text.substring(i, end)) }
-                i = end
-            } else {
-                val next = text.indexOf('@', i).let { if (it == -1) text.length else it }
-                append(text.substring(i, next))
-                i = next
-            }
-        }
-    }
-    Text(annotated, fontSize = sz, color = FPrimary, lineHeight = 20.sp, modifier = modifier)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Comment Section
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Comment Section ───────────────────────────────────────────────────────────
 @Composable
 private fun CommentSection(postId: String, vm: IntrovertFeedViewModel) {
     val commentsMap by vm.comments.collectAsStateWithLifecycle()
     val scope       = rememberCoroutineScope()
     val focusReq    = remember { FocusRequester() }
 
-    var inputText          by remember { mutableStateOf("") }
-    var replyToCommentId   by remember { mutableStateOf("") }
-    var replyToAlias       by remember { mutableStateOf("") }
+    var inputText        by remember { mutableStateOf("") }
+    var replyToCommentId by remember { mutableStateOf("") }
+    var replyToAlias     by remember { mutableStateOf("") }
 
     LaunchedEffect(postId) { vm.listenComments(postId) }
     DisposableEffect(postId) { onDispose { vm.stopListenComments(postId) } }
 
     val postComments = commentsMap[postId] ?: emptyList()
 
-    Column(Modifier.fillMaxWidth().background(Color(0xFFFAFAFA))) {
-        // Comment list
+    Column(Modifier.fillMaxWidth().background(FSurface)) {
         postComments.forEach { comment ->
             CommentItem(
-                comment  = comment,
-                postId   = postId,
-                vm       = vm,
-                onReply  = { alias ->
+                comment = comment,
+                postId  = postId,
+                vm      = vm,
+                onReply = { alias ->
                     replyToCommentId = comment.commentId
                     replyToAlias     = alias
                     inputText        = "@$alias "
-                    scope.launch { kotlinx.coroutines.delay(100); runCatching { focusReq.requestFocus() } }
+                    scope.launch { delay(100); runCatching { focusReq.requestFocus() } }
                 }
             )
+            HorizontalDivider(color = FBorder, thickness = 0.5.dp, modifier = Modifier.padding(start = 68.dp))
         }
         if (postComments.isEmpty()) {
-            Text("No comments yet · be the first ✨", fontSize = 12.sp, color = FMuted,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
+            Text(
+                "No comments yet · be the first ✨",
+                fontSize = 13.sp,
+                color    = FSecondary,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
+            )
         }
 
         // Reply-to banner
         if (replyToAlias.isNotBlank()) {
             Row(
-                Modifier.fillMaxWidth().background(FAccentSoft).padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
+                Modifier
+                    .fillMaxWidth()
+                    .background(FAccentSoft)
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment     = Alignment.CenterVertically
             ) {
-                Text("Replying to @$replyToAlias", fontSize = 12.sp, color = FAccent, fontWeight = FontWeight.Medium)
-                Icon(Icons.Rounded.Close, null, tint = FSecondary, modifier = Modifier.size(16.dp).clickable {
-                    replyToAlias = ""; replyToCommentId = ""; inputText = ""
-                })
+                Row(
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(Icons.Rounded.Reply, null, tint = FAccent, modifier = Modifier.size(14.dp))
+                    Text("Replying to @$replyToAlias", fontSize = 12.sp, color = FAccent, fontWeight = FontWeight.SemiBold)
+                }
+                Icon(Icons.Rounded.Close, null, tint = FSecondary,
+                    modifier = Modifier.size(16.dp).clickable {
+                        replyToAlias = ""; replyToCommentId = ""; inputText = ""
+                    })
             }
         }
 
         // Input bar
-        HorizontalDivider(color = FBorder, thickness = 0.4.dp)
+        HorizontalDivider(color = FBorder, thickness = 1.dp)
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Modifier
+                .fillMaxWidth()
+                .background(FCard)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment     = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             BasicTextField(
                 value         = inputText,
                 onValueChange = { inputText = it },
-                modifier      = Modifier.weight(1f).focusRequester(focusReq)
-                    .clip(RoundedCornerShape(20.dp)).background(FBorder.copy(0.35f))
-                    .padding(horizontal = 14.dp, vertical = 9.dp),
+                modifier      = Modifier
+                    .weight(1f)
+                    .focusRequester(focusReq)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(FSurface)
+                    .border(1.dp, FBorderDark, RoundedCornerShape(20.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 textStyle     = LocalTextStyle.current.copy(fontSize = 13.sp, color = FPrimary),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = {
@@ -1002,14 +1200,22 @@ private fun CommentSection(postId: String, vm: IntrovertFeedViewModel) {
                 }),
                 decorationBox = { inner ->
                     if (inputText.isEmpty()) Text(
-                        if (replyToAlias.isNotBlank()) "Reply to @$replyToAlias…" else "Add a comment…",
-                        fontSize = 13.sp, color = FMuted)
+                        if (replyToAlias.isNotBlank()) "Reply to @$replyToAlias…" else "Write a comment…",
+                        fontSize = 13.sp, color = FMuted
+                    )
                     inner()
                 }
             )
-            if (inputText.isNotBlank()) {
+            AnimatedVisibility(
+                visible = inputText.isNotBlank(),
+                enter   = scaleIn() + fadeIn(),
+                exit    = scaleOut() + fadeOut()
+            ) {
                 Box(
-                    Modifier.size(34.dp).clip(CircleShape).background(FAccent)
+                    Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(FAccent)
                         .clickable {
                             if (replyToCommentId.isNotBlank()) {
                                 vm.postReply(postId, replyToCommentId, inputText, replyToAlias) {
@@ -1020,174 +1226,350 @@ private fun CommentSection(postId: String, vm: IntrovertFeedViewModel) {
                             }
                         },
                     contentAlignment = Alignment.Center
-                ) { Icon(Icons.Rounded.Send, null, tint = Color.White, modifier = Modifier.size(16.dp)) }
+                ) {
+                    Icon(Icons.Rounded.Send, null, tint = Color.White, modifier = Modifier.size(17.dp))
+                }
             }
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Comment Item
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Comment Item ──────────────────────────────────────────────────────────────
 @Composable
-private fun CommentItem(comment: FeedComment, postId: String, vm: IntrovertFeedViewModel, onReply: (String) -> Unit) {
+private fun CommentItem(
+    comment : FeedComment,
+    postId  : String,
+    vm      : IntrovertFeedViewModel,
+    onReply : (String) -> Unit
+) {
     val repliesMap  by vm.replies.collectAsStateWithLifecycle()
     var showReplies by rememberSaveable { mutableStateOf(false) }
     val replyKey    = "${postId}__${comment.commentId}"
 
     LaunchedEffect(showReplies) { if (showReplies) vm.listenReplies(postId, comment.commentId) }
-    DisposableEffect(comment.commentId) { onDispose { if (showReplies) vm.stopListenReplies(postId, comment.commentId) } }
+    DisposableEffect(comment.commentId) {
+        onDispose { if (showReplies) vm.stopListenReplies(postId, comment.commentId) }
+    }
 
     val replies = repliesMap[replyKey] ?: emptyList()
 
-    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            // Avatar
-            Box(Modifier.size(32.dp).clip(CircleShape).background(avatarColor(comment.authorId)), Alignment.Center) {
-                Text(comment.authorAlias.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
-                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = FPrimary.copy(0.6f))
+    Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Box(
+                Modifier.size(34.dp).clip(CircleShape).background(avatarColor(comment.authorId)),
+                Alignment.Center
+            ) {
+                Text(
+                    comment.authorAlias.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                    fontSize   = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color      = avatarTextColor(comment.authorId)
+                )
             }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment     = Alignment.CenterVertically
+                ) {
                     Text(comment.authorAlias, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = FPrimary)
+                    Text("·", fontSize = 12.sp, color = FMuted)
                     Text(timeAgo(comment.createdAt), fontSize = 11.sp, color = FSecondary)
                 }
                 MentionText(comment.text, sz = 14.sp)
-                // Action row — bigger touch targets
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment     = Alignment.CenterVertically
+                ) {
                     Box(
-                        Modifier.clip(RoundedCornerShape(6.dp))
+                        Modifier
+                            .clip(RoundedCornerShape(6.dp))
                             .clickable(remember { MutableInteractionSource() }, null) { onReply(comment.authorAlias) }
-                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
                     ) {
                         Text("Reply", fontSize = 12.sp, color = FSecondary, fontWeight = FontWeight.SemiBold)
                     }
                     if (comment.replyCount > 0) {
                         Box(
-                            Modifier.clip(RoundedCornerShape(6.dp))
+                            Modifier
+                                .clip(RoundedCornerShape(6.dp))
                                 .clickable(remember { MutableInteractionSource() }, null) { showReplies = !showReplies }
-                                .padding(horizontal = 10.dp, vertical = 8.dp)
+                                .padding(horizontal = 8.dp, vertical = 5.dp)
                         ) {
                             Text(
-                                if (showReplies) "Hide replies" else "View ${comment.replyCount} ${if (comment.replyCount == 1) "reply" else "replies"}",
-                                fontSize = 12.sp, color = FAccent, fontWeight = FontWeight.SemiBold
+                                if (showReplies) "Hide replies"
+                                else "View ${comment.replyCount} ${if (comment.replyCount == 1) "reply" else "replies"}",
+                                fontSize   = 12.sp,
+                                color      = FAccent,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                     }
                 }
             }
         }
-        // Nested replies — each reply can also be replied to (replies to parent comment)
         if (showReplies) {
             replies.forEach { reply ->
-                ReplyItem(reply = reply, onReply = { alias ->
-                    onReply(alias)   // triggers reply to parent comment, pre-fills @alias
-                })
+                ReplyItem(reply = reply, onReply = { onReply(it) })
             }
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Reply Item (indented)
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Reply Item ────────────────────────────────────────────────────────────────
 @Composable
 private fun ReplyItem(reply: FeedReply, onReply: (String) -> Unit = {}) {
     Row(
-        Modifier.fillMaxWidth().padding(start = 42.dp, top = 6.dp, bottom = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        Modifier
+            .fillMaxWidth()
+            .background(FCard.copy(0.6f))
+            .padding(start = 56.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(Modifier.size(26.dp).clip(CircleShape).background(avatarColor(reply.authorId)), Alignment.Center) {
-            Text(reply.authorAlias.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
-                fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = FPrimary.copy(0.6f))
+        Box(
+            Modifier.size(28.dp).clip(CircleShape).background(avatarColor(reply.authorId)),
+            Alignment.Center
+        ) {
+            Text(
+                reply.authorAlias.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                fontSize   = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color      = avatarTextColor(reply.authorId)
+            )
         }
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(reply.authorAlias, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = FPrimary)
+                Text("·", fontSize = 11.sp, color = FMuted)
                 Text(timeAgo(reply.createdAt), fontSize = 11.sp, color = FSecondary)
             }
             MentionText(reply.text, sz = 13.sp)
-            // Reply button — replies go to the parent comment thread, @mentioning this person
             Box(
-                Modifier.clip(RoundedCornerShape(6.dp))
+                Modifier
+                    .clip(RoundedCornerShape(6.dp))
                     .clickable(remember { MutableInteractionSource() }, null) { onReply(reply.authorAlias) }
-                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                Text("Reply", fontSize = 12.sp, color = FSecondary, fontWeight = FontWeight.SemiBold)
+                Text("Reply", fontSize = 11.sp, color = FSecondary, fontWeight = FontWeight.SemiBold)
             }
         }
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Notification Panel
-// ─────────────────────────────────────────────────────────────────────────────
+// ── @mention text ─────────────────────────────────────────────────────────────
+@Composable
+private fun MentionText(text: String, modifier: Modifier = Modifier, sz: TextUnit = 14.sp) {
+    val annotated = buildAnnotatedString {
+        var i = 0
+        while (i < text.length) {
+            if (text[i] == '@') {
+                val spaceIdx = text.indexOf(' ', i)
+                val nlIdx    = text.indexOf('\n', i)
+                val end = when {
+                    spaceIdx == -1 && nlIdx == -1 -> text.length
+                    spaceIdx == -1 -> nlIdx
+                    nlIdx == -1    -> spaceIdx
+                    else           -> minOf(spaceIdx, nlIdx)
+                }
+                withStyle(SpanStyle(color = FAccent, fontWeight = FontWeight.SemiBold)) {
+                    append(text.substring(i, end))
+                }
+                i = end
+            } else {
+                val next = text.indexOf('@', i).let { if (it == -1) text.length else it }
+                append(text.substring(i, next))
+                i = next
+            }
+        }
+    }
+    Text(annotated, fontSize = sz, color = FPrimary, lineHeight = 20.sp, modifier = modifier)
+}
+
+// ── Notification Panel ────────────────────────────────────────────────────────
 @Composable
 private fun NotifPanel(notifs: List<FeedNotif>, onDismiss: () -> Unit) {
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        properties       = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(0.4f)).clickable(remember{MutableInteractionSource()}, null) { onDismiss() }, Alignment.BottomCenter) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(0.45f))
+                .clickable(remember { MutableInteractionSource() }, null) { onDismiss() },
+            Alignment.BottomCenter
+        ) {
             Column(
-                Modifier.fillMaxWidth().fillMaxHeight(0.65f)
-                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                    .background(Color.White)
-                    .clickable(remember{MutableInteractionSource()}, null) {}
+                Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.65f)
+                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                    .background(FCard)
+                    .clickable(remember { MutableInteractionSource() }, null) {}
             ) {
                 // Handle
-                Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), Alignment.Center) {
-                    Box(Modifier.width(36.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(FMuted))
+                Box(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp), Alignment.Center) {
+                    Box(Modifier.width(40.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(FMuted))
                 }
-                Text("Notifications", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = FPrimary,
-                    modifier = Modifier.padding(horizontal = 20.dp).padding(bottom = 12.dp))
-                HorizontalDivider(color = FBorder, thickness = 0.5.dp)
+
+                // Title row
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment     = Alignment.CenterVertically
+                ) {
+                    Text("Notifications", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = FPrimary)
+                    if (notifs.isNotEmpty()) {
+                        Text("${notifs.size}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                            color = FAccent,
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(FAccentSoft)
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+                HorizontalDivider(color = FBorder, thickness = 1.dp)
+
                 if (notifs.isEmpty()) {
                     Box(Modifier.fillMaxSize(), Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Rounded.Notifications, null, tint = FMuted, modifier = Modifier.size(40.dp))
-                            Text("No notifications yet", fontSize = 14.sp, color = FSecondary)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(Icons.Rounded.NotificationsNone, null,
+                                tint = FMuted, modifier = Modifier.size(44.dp))
+                            Text("All caught up!", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = FPrimary)
+                            Text("No new notifications", fontSize = 13.sp, color = FSecondary)
                         }
                     }
                 } else {
                     LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
                         items(notifs, key = { it.notifId }) { n ->
                             Row(
-                                Modifier.fillMaxWidth()
-                                    .background(if (!n.read) FAccentSoft else Color.White)
+                                Modifier
+                                    .fillMaxWidth()
+                                    .background(if (!n.read) FAccentSoft else Color.Transparent)
                                     .padding(horizontal = 20.dp, vertical = 12.dp),
-                                verticalAlignment = Alignment.Top,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                verticalAlignment     = Alignment.Top,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
                             ) {
                                 val icon = when (n.type) {
                                     "reply"   -> Icons.Rounded.Reply
                                     "comment" -> Icons.Rounded.ChatBubbleOutline
                                     else      -> Icons.Rounded.PersonAdd
                                 }
-                                Box(Modifier.size(36.dp).clip(CircleShape).background(FAccentSoft), Alignment.Center) {
+                                Box(
+                                    Modifier
+                                        .size(38.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(FAccentSoft)
+                                        .border(1.dp, FAccent.copy(0.15f), RoundedCornerShape(12.dp)),
+                                    Alignment.Center
+                                ) {
                                     Icon(icon, null, tint = FAccent, modifier = Modifier.size(18.dp))
                                 }
-                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                     Text(
                                         when (n.type) {
                                             "reply"   -> "${n.fromAlias} replied to your comment"
                                             "comment" -> "${n.fromAlias} commented on your post"
                                             else      -> "${n.fromAlias} sent you a friend request"
                                         },
-                                        fontSize = 13.sp, fontWeight = FontWeight.Medium, color = FPrimary
+                                        fontSize   = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color      = FPrimary
                                     )
                                     if (n.previewText.isNotBlank()) {
-                                        Text("\"${n.previewText}\"", fontSize = 12.sp, color = FSecondary, maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis)
+                                        Text(
+                                            "\"${n.previewText}\"",
+                                            fontSize  = 12.sp,
+                                            color     = FSecondary,
+                                            maxLines  = 1,
+                                            overflow  = TextOverflow.Ellipsis
+                                        )
                                     }
                                     Text(timeAgo(n.createdAt), fontSize = 11.sp, color = FMuted)
                                 }
-                                if (!n.read) Box(Modifier.size(7.dp).clip(CircleShape).background(FAccent).align(Alignment.CenterVertically))
+                                if (!n.read) {
+                                    Box(
+                                        Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(FAccent)
+                                            .align(Alignment.CenterVertically)
+                                    )
+                                }
                             }
-                            HorizontalDivider(color = FBorder, thickness = 0.3.dp)
+                            HorizontalDivider(
+                                color    = FBorder,
+                                thickness = 0.5.dp,
+                                modifier  = Modifier.padding(horizontal = 20.dp)
+                            )
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+// ── Instagram-Style Bottom Sheet Menu ─────────────────────────────────────────
+@Composable
+private fun InstagramStyleMenu(
+    onDismiss : () -> Unit,
+    onReport  : () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.5f))
+                .clickable(remember { MutableInteractionSource() }, null) { onDismiss() },
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                    .background(FCard)
+                    .clickable(remember { MutableInteractionSource() }, null) {}
+            ) {
+                Box(Modifier.fillMaxWidth().padding(vertical = 12.dp), Alignment.Center) {
+                    Box(Modifier.width(40.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(FMuted))
+                }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onReport() }
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Icon(Icons.Rounded.Flag, null, tint = FRed, modifier = Modifier.size(22.dp))
+                    Text("Report post", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = FRed)
+                }
+                HorizontalDivider(color = FBorder, thickness = 0.5.dp)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onDismiss() }
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text("Cancel", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = FSecondary)
+                }
+                Spacer(Modifier.height(16.dp))
             }
         }
     }
