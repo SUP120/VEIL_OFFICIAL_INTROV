@@ -34,13 +34,19 @@ Alongside the circle experience, Veil has an anonymous community feed, a swipe-t
 
 ## Core Features
 
-### The Circle (3-Day Matching)
-Four strangers are matched into a private group. They go through a structured three-day experience:
+### The Circle — 3-Day Matching (In Development)
+
+The flagship feature. All screens and backend logic are built; the matching flow is currently disabled while stability and edge cases are finalised before public launch.
+
+The concept: four strangers are matched into a private group and go through a structured three-day experience together before identities are revealed.
+
 - **Day 1** — Slow chat (one message per day), anonymous question cards, icebreaker games
 - **Day 2** — Secret compliments, Truth or Myth, shared listening, Would You Rather
 - **Day 3** — Reveal ceremony with animations, followed by an optional continued connection
 
-The pacing is intentional. Real trust does not form in five minutes.
+The deliberate pacing is the point. Real trust does not form in five minutes.
+
+Screens built: `WaitingRoomScreen`, `RoomLobbyScreen`, `PartyIslandScreen`, `RevealCeremonyScreen`, `SlowChatScreen`, `SecretComplimentScreen`, `TrueOrMythScreen`, `ListeningRoomScreen`, `WouldYouRatherScreen`, `VibesScreen`, `KnowEachOtherScreen`.
 
 ### Introvert Feed
 An anonymous social feed where users post thoughts, photos, and reflections. No follower count. No public performance. Just expression.
@@ -258,9 +264,13 @@ The app currently ships **47 screens** across the following categories:
 
 ## Roadmap
 
+### In Progress
+- **Circle matching — public launch** — All screens are complete. Final work covers queue stability, edge-case handling (user drops mid-circle), and admin moderation tooling before the flow is enabled for all users.
+
+### Planned
 - Direct messages list (Instagram-style, for post interactions and swipe matches)
 - Group voice rooms for circles
-- Expanded game library (Truth or Dare, Would You Rather — currently in progress)
+- Expanded game library (Truth or Dare, Would You Rather — UI exists, backend integration in progress)
 - iOS version
 
 ---
