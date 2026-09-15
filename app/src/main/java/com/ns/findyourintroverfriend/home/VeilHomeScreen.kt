@@ -632,6 +632,9 @@ fun VeilHomeScreen(
  onNavigateDrawGuess  : () -> Unit = {},
 
 
+ onOpenVeilFriends   : () -> Unit = {},
+
+
  ) {
 
 
@@ -1113,6 +1116,9 @@ fun VeilHomeScreen(
 
 
  onOpenInvite = onOpenInvite,
+
+
+ onOpenVeilFriends = onOpenVeilFriends,
 
 
  onLogout = onLogout
@@ -1969,6 +1975,9 @@ private fun ProfileTab(
  onOpenInvite : () -> Unit,
 
 
+ onOpenVeilFriends : () -> Unit,
+
+
  onLogout : () -> Unit,
 
 
@@ -2267,6 +2276,15 @@ private fun ProfileTab(
   sub = "Buy cookies · send compliments",
   badge = if (cookieBalance > 0) "$cookieBalance" else null) {
   haptic.performHapticFeedback(HapticFeedbackType.LongPress); onOpenCookieStore()
+  }
+  PDivider()
+  PMenuRow(
+      icon  = "🌙",
+      label = "VEIL Friends",
+      sub   = "AI companions that remember you",
+      badge = "NEW"
+  ) {
+      haptic.performHapticFeedback(HapticFeedbackType.LongPress); onOpenVeilFriends()
   }
   PDivider()
   PMenuRow(icon = "👥", label = "Invite Friends",

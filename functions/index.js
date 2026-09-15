@@ -9,6 +9,11 @@ const https = require("https");
 
 initializeApp();
 
+// ── VEIL Friends — AI Chat Gateway ────────────────────────────────────────
+// Loaded from separate file to keep index.js clean.
+const { aiFriendChat } = require("./aiFriendChat");
+exports.aiFriendChat = aiFriendChat;
+
 // Firebase Functions Gen 2 automatically loads the .env file in the functions/ directory.
 // Access values via process.env.VARIABLE_NAME — no Blaze / Secret Manager needed.
 

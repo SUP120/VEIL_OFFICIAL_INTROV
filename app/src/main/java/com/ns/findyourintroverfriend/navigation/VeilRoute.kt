@@ -92,4 +92,9 @@ object VeilRoute {
     const val GROUP_ROOMS     = "group_rooms"
     const val GROUP_CHAT_ROOM = "group_chat_room/{roomId}"
     fun groupChatRoom(roomId: String) = "group_chat_room/$roomId"
+
+    // ── VEIL Friends — AI Companions ─────────────────────────────────────────
+    const val VEIL_FRIENDS         = "veil_friends"           // friends home / discovery
+    const val AI_FRIEND_CHAT       = "ai_friend_chat/{friendId}/{conversationId}"  // chat screen
+    fun aiFriendChat(friendId: String, conversationId: String = "new") = "ai_friend_chat/$friendId/$conversationId"
 }

@@ -64,6 +64,8 @@ import com.ns.findyourintroverfriend.voiceroom.VoiceRoomActiveScreen
 import com.ns.findyourintroverfriend.voiceroom.VoiceRoomViewModel
 import com.ns.findyourintroverfriend.groupchat.GroupRoomsScreen
 import com.ns.findyourintroverfriend.groupchat.GroupChatRoomScreen
+import com.ns.findyourintroverfriend.aifriend.VeilFriendsScreen
+import com.ns.findyourintroverfriend.aifriend.AiFriendChatScreen
 
 
 @Composable
@@ -279,6 +281,9 @@ fun VeilNavGraph(navController: NavHostController, startDestination: String) {
                 },
                 onNavigateDrawGuess = {
                     navController.navigate(VeilRoute.DRAW_GUESS_PUBLIC)
+                },
+                onOpenVeilFriends = {
+                    navController.navigate(VeilRoute.VEIL_FRIENDS)
                 },
                 onLogout = {
                     com.ns.findyourintroverfriend.notifications.VeilNotifier.unregisterUser()
@@ -795,6 +800,33 @@ fun VeilNavGraph(navController: NavHostController, startDestination: String) {
                 roomId        = roomId,
                 onBack        = { navController.popBackStack() },
                 onOpenProfile = { uid -> navController.navigate("user_profile/$uid") }
+            )
+        }
+
+        // ── VEIL Friends — AI Companion Home ───────────────────────────────
+        composable(VeilRoute.VEIL_FRIENDS) {
+            VeilFriendsScreen(
+                onBack       = { navController.popBackStack() },
+                onOpenFriend = { friendId ->
+                    navController.navigate(VeilRoute.aiFriendChat(friendId))
+                }
+            )
+        }
+
+        // ── VEIL Friends — AI Chat ─────────────────────────────────────────
+        composable(
+            route     = VeilRoute.AI_FRIEND_CHAT,
+            arguments = listOf(
+                navArgument("friendId")       { type = NavType.StringType },
+                navArgument("conversationId") { type = NavType.StringType; defaultValue = "new" }
+            )
+        ) { back ->
+            val friendId       = back.arguments?.getString("friendId")       ?: ""
+            val conversationId = back.arguments?.getString("conversationId") ?: "new"
+            AiFriendChatScreen(
+                friendId       = friendId,
+                conversationId = conversationId,
+                onBack         = { navController.popBackStack() }
             )
         }
     }
