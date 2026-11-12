@@ -2,24 +2,17 @@
 *.iml
 .gradle/
 /local.properties
-/.idea/caches/
-/.idea/libraries/
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
+.idea/
+.kotlin/
 .DS_Store
 /build/
+app/build/
 /captures/
 .externalNativeBuild/
 .cxx/
 *.class
 
-# Generated source
-app/build/
-
 # ── SECRETS — never commit any of these ───────────────────────────────────────
-
 # Firebase config (contains project ID, API keys, app ID)
 google-services.json
 app/google-services.json
@@ -32,79 +25,62 @@ keystore.properties
 *.keystore
 *.jks
 
-# Firebase Functions environment variables
+# Firebase Functions & API environment variables
 functions/.env
 functions/.env.local
 functions/.env.*.local
-
-# Cloudflare Worker secrets
+veil-api/.env
+veil-api/.env.local
 cloudflare-worker/.env
 cloudflare-worker/.dev.vars
 cloudflare-worker/wrangler.toml
 
 # Any generic .env files anywhere in the project
 **/.env
-**/.env.local
-**/.env.production
+**/.env.*
+!**/.env.example
 
-# ── Development noise ─────────────────────────────────────────────────────────
+# ── Dependencies ─────────────────────────────────────────────────────────────
+node_modules/
+functions/node_modules/
+veil-api/node_modules/
+functions/.firebase/
+veil-api/.vercel/
 
-# JVM crash logs
+# ── Development & Build Noise ─────────────────────────────────────────────────
+# JVM & process crash logs
 hs_err_pid*.log
+replay_pid*.log
+*.log
+
+# Scratch logs & text dumps
+err.txt
+errors_only.txt
+kotlin_errors.txt
+build_signed*.txt
+*.recovered.*
+*_recovered.*
+
+# Executables & Installers
+*.exe
+*.msi
+*.apk
+*.aab
 
 # Python bytecode
 __pycache__/
 *.pyc
 *.pyo
 
-# One-off fix/utility scripts (kept locally, not for repo)
-fix_*.py
-fix_*.ps1
-fix_*.bat
-deep_fix_*.py
-find_kotlin_*.py
-restore_*.py
-resize_*.ps1
-copy_*.py
-
-# Scratch files and personal notes
-err.txt
-errors_only.txt
-kotlin_errors.txt
-build_signed2.txt
+# ── OS Generated Files ────────────────────────────────────────────────────────
+Thumbs.db
+ehthumbs.db
 desktop.ini
-
-# Large raw assets not needed in repo (keep processed versions)
-bird.png
-island_base.png
-sky_day.png
-sky_night.png
-glow.jpg
-glow.png
-
-# Internal dev docs (too detailed to expose publicly)
-# Uncomment if you want to exclude these from public forks:
-# BUILD_FIX_SUMMARY.md
-# changesByKiroAi.md
-# errors.md
-# FIREBASE_RULES_UPDATE.md
-
-# ── Node.js (Firebase Functions) ─────────────────────────────────────────────
-functions/node_modules/
-functions/.firebase/
-
-# ── macOS ─────────────────────────────────────────────────────────────────────
-.DS_Store
+Desktop.ini
+$RECYCLE.BIN/
 .AppleDouble
 .LSOverride
 ._*
 
-# ── Windows ───────────────────────────────────────────────────────────────────
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-
-# ── VS Code ───────────────────────────────────────────────────────────────────
-.vscode/settings.json
-.vscode/launch.json
+# ── IDEs ──────────────────────────────────────────────────────────────────────
+.vscode/

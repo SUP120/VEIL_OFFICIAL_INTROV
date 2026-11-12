@@ -16,6 +16,9 @@ import com.google.firebase.firestore.Query
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.util.UUID
@@ -47,6 +50,7 @@ class FeedViewModel : ViewModel() {
 
     var draftCaption   by mutableStateOf("")
     var draftImageUris by mutableStateOf<List<Uri>>(emptyList())
+    var draftTag       by mutableStateOf("")   // selected tag for new post
 
     private val _myAlias  = MutableStateFlow("")
     private val _myPhoto  = MutableStateFlow("")
@@ -80,7 +84,21 @@ class FeedViewModel : ViewModel() {
 
     private var notifListener: ListenerRegistration? = null
 
-    init { loadMyProfile(); loadFeed(); startNotifListener() }
+    // ── Bookmarks (saved posts) ───────────────────────────────────────────────
+    private val _savedPostIds = MutableStateFlow<Set<String>>(emptySet())
+    val savedPostIds: StateFlow<Set<String>> = _savedPostIds.asStateFlow()
+
+    // ── Tag filter ────────────────────────────────────────────────────────────
+    private val _selectedTag = MutableStateFlow("All")
+    val selectedTag: StateFlow<String> = _selectedTag.asStateFlow()
+
+    /** Derived: posts filtered by selected tag. Use this in the UI instead of posts directly. */
+    val filteredPosts: StateFlow<List<VeilPost>> =
+        combine(_posts, _selectedTag) { posts, tag ->
+            if (tag == "All") posts else posts.filter { it.tag == tag }
+        }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList<VeilPost>())
+
+    init { loadMyProfile(); loadFeed(); startNotifListener(); loadSavedPosts() }
 
     private var _isCameraShy = false
 
@@ -236,6 +254,12 @@ class FeedViewModel : ViewModel() {
 
     @Suppress("UNCHECKED_CAST")
     private fun toPost(doc: com.google.firebase.firestore.DocumentSnapshot): VeilPost? = try {
+        val rawReactions = doc.get("reactions") as? Map<*, *>
+        val reactions = rawReactions?.mapNotNull { (k, v) ->
+            val key = k as? String ?: return@mapNotNull null
+            val uids = (v as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+            key to uids
+        }?.toMap() ?: emptyMap()
         VeilPost(
             postId         = doc.id,
             authorUid      = doc.getString("authorUid")      ?: "",
@@ -245,37 +269,101 @@ class FeedViewModel : ViewModel() {
             caption        = doc.getString("caption")        ?: "",
             imageUrls      = (doc.get("imageUrls") as? List<String>) ?: emptyList(),
             likedBy        = (doc.get("likedBy")   as? List<String>) ?: emptyList(),
+            reactions      = reactions,
             commentsCount  = doc.getLong("commentsCount")    ?: 0L,
-            createdAt      = doc.getLong("createdAt")        ?: 0L
+            createdAt      = doc.getLong("createdAt")        ?: 0L,
+            tag            = doc.getString("tag")            ?: ""
         )
     } catch (_: Exception) { null }
 
-    // ── Likes ───────────────────────────────────────────────────────────────────
-    fun toggleLike(post: VeilPost) {
+    // ── Reactions (5 emoji) ─────────────────────────────────────────────────────
+    /** Returns the emoji this user has reacted with, or null if no reaction. */
+    fun getUserReaction(post: VeilPost): String? =
+        post.reactions.entries.firstOrNull { uid in it.value }?.key
+
+    fun toggleReaction(post: VeilPost, emoji: String) {
         if (uid.isEmpty()) return
-        // — Rate limit: ignore if tapped too fast (prevents Firestore write spam)
         val now = System.currentTimeMillis()
         if (now - (lastLikeTime[post.postId] ?: 0L) < LIKE_COOLDOWN_MS) return
         lastLikeTime[post.postId] = now
 
-        val already = post.likedBy.contains(uid)
-        _posts.value = _posts.value.map { p ->
-            if (p.postId != post.postId) p
-            else {
-                val newLikes: List<String> = if (already) p.likedBy - uid else p.likedBy + uid
-                p.copy(likedBy = newLikes)
-            }
+        val currentReaction = getUserReaction(post)
+        val isToggleOff = currentReaction == emoji   // tapping same emoji removes it
+
+        // ── Optimistic update ─────────────────────────────────────────────────
+        val newReactions = post.reactions.toMutableMap()
+        currentReaction?.let { old ->
+            val without = (newReactions[old] ?: emptyList()) - uid
+            if (without.isEmpty()) newReactions.remove(old) else newReactions[old] = without
         }
+        if (!isToggleOff) newReactions[emoji] = ((newReactions[emoji] ?: emptyList()) + uid)
+
+        val newLikedBy = when {
+            isToggleOff  -> post.likedBy - uid
+            currentReaction == null -> post.likedBy + uid
+            else -> post.likedBy   // switching emoji — stay in likedBy
+        }.distinct()
+
+        _posts.value = _posts.value.map { p ->
+            if (p.postId == post.postId) p.copy(reactions = newReactions, likedBy = newLikedBy) else p
+        }
+
+        // ── Firestore update ──────────────────────────────────────────────────
         viewModelScope.launch {
             try {
-                val ref = db.collection("veilPosts").document(post.postId)
-                if (already) ref.update("likedBy", FieldValue.arrayRemove(uid)).await()
-                else         ref.update("likedBy", FieldValue.arrayUnion(uid)).await()
-            } catch (e: Exception) {
-                Log.e("FeedVM", "toggleLike: ${e.message}")
-                _posts.value = _posts.value.map { p ->
-                    if (p.postId == post.postId) p.copy(likedBy = post.likedBy) else p
+                val ref     = db.collection("veilPosts").document(post.postId)
+                val updates = mutableMapOf<String, Any>()
+                if (isToggleOff) {
+                    updates["reactions.$currentReaction"] = FieldValue.arrayRemove(uid)
+                    updates["likedBy"]                   = FieldValue.arrayRemove(uid)
+                } else {
+                    if (currentReaction != null)
+                        updates["reactions.$currentReaction"] = FieldValue.arrayRemove(uid)
+                    updates["reactions.$emoji"] = FieldValue.arrayUnion(uid)
+                    if (currentReaction == null)
+                        updates["likedBy"] = FieldValue.arrayUnion(uid)
                 }
+                ref.update(updates).await()
+            } catch (e: Exception) {
+                Log.e("FeedVM", "toggleReaction: ${e.message}")
+                // Rollback to original state
+                _posts.value = _posts.value.map { p ->
+                    if (p.postId == post.postId) p.copy(reactions = post.reactions, likedBy = post.likedBy) else p
+                }
+            }
+        }
+    }
+
+    // ── Tag filter ────────────────────────────────────────────────────────────
+    fun setTagFilter(tag: String) { _selectedTag.value = tag }
+
+    // ── Bookmarks ─────────────────────────────────────────────────────────────
+    private fun loadSavedPosts() {
+        if (uid.isEmpty()) return
+        viewModelScope.launch {
+            runCatching {
+                val snap = db.collection("users").document(uid)
+                    .collection("savedPosts").get().await()
+                _savedPostIds.value = snap.documents.map { it.id }.toSet()
+            }
+        }
+    }
+
+    fun toggleBookmark(postId: String) {
+        if (uid.isEmpty()) return
+        val isSaved = postId in _savedPostIds.value
+        // Optimistic update
+        _savedPostIds.value = if (isSaved) _savedPostIds.value - postId else _savedPostIds.value + postId
+        viewModelScope.launch {
+            try {
+                val ref = db.collection("users").document(uid)
+                    .collection("savedPosts").document(postId)
+                if (isSaved) ref.delete().await()
+                else         ref.set(mapOf("savedAt" to System.currentTimeMillis())).await()
+            } catch (e: Exception) {
+                Log.e("FeedVM", "toggleBookmark: ${e.message}")
+                // Rollback
+                _savedPostIds.value = if (isSaved) _savedPostIds.value + postId else _savedPostIds.value - postId
             }
         }
     }
@@ -529,17 +617,20 @@ class FeedViewModel : ViewModel() {
                     "postId"         to postId,
                     "authorUid"      to uid,
                     "authorAlias"    to _myAlias.value,
-                    "authorPhotoUrl" to _myPhoto.value,   // empty if camera shy
-                    "authorAvatar"   to _myAvatar.value,  // avatar name if camera shy
+                    "authorPhotoUrl" to _myPhoto.value,
+                    "authorAvatar"   to _myAvatar.value,
                     "caption"        to draftCaption.trim(),
-                    "imageUrls"      to imageUrls,         // ✅ real Cloudinary URLs
+                    "imageUrls"      to imageUrls,
                     "likedBy"        to emptyList<String>(),
+                    "reactions"      to emptyMap<String, List<String>>(),
                     "commentsCount"  to 0L,
+                    "tag"            to draftTag,
                     "createdAt"      to System.currentTimeMillis()
                 )
                 db.collection("veilPosts").document(postId).set(data).await()
                 draftCaption   = ""
                 draftImageUris = emptyList()
+                draftTag       = ""
                 refresh()
                 onDone()
             } catch (e: Exception) { Log.e("FeedVM", "submitPost: ${e.message}") }
@@ -553,6 +644,47 @@ class FeedViewModel : ViewModel() {
                 db.collection("veilPosts").document(postId).delete().await()
                 _posts.value = _posts.value.filter { it.postId != postId }
             } catch (e: Exception) { Log.e("FeedVM", "deletePost: ${e.message}") }
+        }
+    }
+
+    // ── Edit a comment (author only) ──────────────────────────────────────────
+    fun editComment(postId: String, commentId: String, newText: String) {
+        if (uid.isEmpty() || newText.isBlank()) return
+        // Optimistic update
+        _comments.value = _comments.value.map { c ->
+            if (c.commentId == commentId) c.copy(text = newText.trim()) else c
+        }
+        viewModelScope.launch {
+            try {
+                db.collection("veilPosts").document(postId)
+                    .collection("comments").document(commentId)
+                    .update(mapOf(
+                        "text"     to newText.trim(),
+                        "editedAt" to System.currentTimeMillis()
+                    )).await()
+            } catch (e: Exception) {
+                Log.e("FeedVM", "editComment: ${e.message}")
+                // On failure reload to restore truth
+                loadComments(postId)
+            }
+        }
+    }
+
+    // ── Delete a comment (author only) ────────────────────────────────────────
+    fun deleteComment(postId: String, commentId: String) {
+        if (uid.isEmpty()) return
+        // Optimistic update
+        _comments.value = _comments.value.filter { it.commentId != commentId }
+        _posts.value = _posts.value.map { p ->
+            if (p.postId == postId) p.copy(commentsCount = (p.commentsCount - 1).coerceAtLeast(0)) else p
+        }
+        viewModelScope.launch {
+            try {
+                db.collection("veilPosts").document(postId)
+                    .collection("comments").document(commentId).delete().await()
+                db.collection("veilPosts").document(postId)
+                    .update("commentsCount", com.google.firebase.firestore.FieldValue.increment(-1)).await()
+            } catch (e: Exception) { Log.e("FeedVM", "deleteComment: ${e.message}") }
         }
     }
 

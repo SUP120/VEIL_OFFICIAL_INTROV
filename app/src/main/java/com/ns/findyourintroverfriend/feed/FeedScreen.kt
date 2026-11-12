@@ -110,7 +110,7 @@ fun FeedScreen(
     onOpenCookieStore: () -> Unit = {},
     onOpenUserProfile: (uid: String) -> Unit = {}
 ) {
-    val posts          by vm.posts.collectAsStateWithLifecycle()
+    val posts          by vm.filteredPosts.collectAsStateWithLifecycle()
     val loading        by vm.loading.collectAsStateWithLifecycle()
     val isRefreshing   by vm.isRefreshing.collectAsStateWithLifecycle()
     val isLoadingMore  by vm.isLoadingMore.collectAsStateWithLifecycle()
@@ -121,6 +121,8 @@ fun FeedScreen(
     val myApproaches   by approachVm.myApproaches.collectAsStateWithLifecycle()
     val freeLeft       by approachVm.freeLeft.collectAsStateWithLifecycle()
     val approachResult by approachVm.result.collectAsStateWithLifecycle()
+    val savedPostIds   by vm.savedPostIds.collectAsStateWithLifecycle()
+    val selectedTag    by vm.selectedTag.collectAsStateWithLifecycle()
 
     val pagerState      = rememberPagerState(pageCount = { 2 })
     val scope           = rememberCoroutineScope()
@@ -401,28 +403,38 @@ fun FeedScreen(
                                 onRefresh    = { vm.refresh() },
                                 modifier     = Modifier.fillMaxSize()
                             ) {
-                                 LazyColumn(
-                                     state    = listState,
-                                     modifier = Modifier.fillMaxSize().background(IGBg),
-                                     contentPadding = PaddingValues(top = 6.dp, bottom = 88.dp)
-                                 ) {
-                                     items(posts, key = { it.postId }) { post ->
-                                         PostCard(
-                                             post               = post,
-                                             myUid              = vm.uid,
-                                             onLike             = { vm.toggleLike(post) },
-                                             onComment          = { commentPost = post },
-                                             onDelete           = { vm.deletePost(post.postId) },
-                                             onReport           = { vm.hidePostLocally(post.postId); reportTarget = post.postId },
-                                             onOpenProfile      = { onOpenUserProfile(post.authorUid) },
-                                             alreadyApproached  = post.authorUid in myApproaches,
-                                             isOwnPost          = post.authorUid == vm.uid,
-                                             onApproach         = {
-                                                 if (freeLeft > 0) approachVm.sendFreeApproach(post.authorUid, post.authorAlias, myAlias, "", myPhoto)
-                                                 else pendingApproachPost = post
-                                             }
-                                         )
-                                     }
+                                LazyColumn(
+                                    state    = listState,
+                                    modifier = Modifier.fillMaxSize().background(IGBg),
+                                    contentPadding = PaddingValues(top = 6.dp, bottom = 88.dp)
+                                ) {
+                                    // ── Tag filter chips (sticky) ─────────────────
+                                    stickyHeader(key = "tagFilter") {
+                                        TagFilterRow(
+                                            selectedTag   = selectedTag,
+                                            onTagSelected = { vm.setTagFilter(it) }
+                                        )
+                                    }
+                                    items(posts, key = { it.postId }) { post ->
+                                        PostCard(
+                                            post               = post,
+                                            myUid              = vm.uid,
+                                            userReaction       = vm.getUserReaction(post),
+                                            onReact            = { emoji -> vm.toggleReaction(post, emoji) },
+                                            isBookmarked       = post.postId in savedPostIds,
+                                            onBookmark         = { vm.toggleBookmark(post.postId) },
+                                            onComment          = { commentPost = post },
+                                            onDelete           = { vm.deletePost(post.postId) },
+                                            onReport           = { vm.hidePostLocally(post.postId); reportTarget = post.postId },
+                                            onOpenProfile      = { onOpenUserProfile(post.authorUid) },
+                                            alreadyApproached  = post.authorUid in myApproaches,
+                                            isOwnPost          = post.authorUid == vm.uid,
+                                            onApproach         = {
+                                                if (freeLeft > 0) approachVm.sendFreeApproach(post.authorUid, post.authorAlias, myAlias, "", myPhoto)
+                                                else pendingApproachPost = post
+                                            }
+                                        )
+                                    }
                                     item {
                                         if (isLoadingMore) {
                                             Box(Modifier.fillMaxWidth().padding(vertical = 16.dp), Alignment.Center) {
@@ -696,7 +708,10 @@ private fun FeedNotifPanel(
 private fun PostCard(
     post             : VeilPost,
     myUid            : String,
-    onLike           : () -> Unit,
+    userReaction     : String?    = null,
+    onReact          : (String) -> Unit = {},
+    isBookmarked     : Boolean    = false,
+    onBookmark       : () -> Unit = {},
     onComment        : () -> Unit,
     onDelete         : () -> Unit,
     onReport         : () -> Unit,
@@ -705,12 +720,14 @@ private fun PostCard(
     alreadyApproached: Boolean    = false,
     isOwnPost        : Boolean    = false
 ) {
-    val liked = post.likedBy.contains(myUid)
+    val hasReaction = userReaction != null
     val isDev  = com.ns.findyourintroverfriend.util.VeilDevConfig.isDeveloper(post.authorUid)
     var doubleTapLike      by remember { mutableStateOf(false) }
     var showOptions        by remember { mutableStateOf(false) }
+    var showReactionPicker by remember { mutableStateOf(false) }
     var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
     var visible            by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
     LaunchedEffect(Unit) { visible = true }
 
     AnimatedVisibility(
@@ -803,7 +820,7 @@ private fun PostCard(
                         .clip(RoundedCornerShape(bottomStart = 0.dp, bottomEnd = 0.dp))
                         .combinedClickable(
                             onClick       = { innerFullScreenUrl = post.imageUrls.first() },
-                            onDoubleClick = { if (!liked) onLike(); doubleTapLike = true }
+                            onDoubleClick = { if (userReaction == null) onReact("❤️"); doubleTapLike = true }
                         )
                 ) {
                     AsyncImage(
@@ -832,6 +849,18 @@ private fun PostCard(
                 }
             }
 
+            // ── Tag badge ─────────────────────────────────────────────────────
+            if (post.tag.isNotBlank()) {
+                Box(
+                    Modifier.padding(horizontal = 16.dp)
+                        .padding(top = if (post.imageUrls.isNotEmpty()) 10.dp else 6.dp, bottom = 2.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(IGAccentSoft)
+                        .padding(horizontal = 10.dp, vertical = 3.dp)
+                ) {
+                    Text(post.tag, fontSize = 10.5.sp, color = IGAccent, fontWeight = FontWeight.SemiBold)
+                }
+            }
             // ── Caption — soft inline text (no inline bold name) ─────────────
             if (post.caption.isNotBlank()) {
                 Text(
@@ -842,7 +871,7 @@ private fun PostCard(
                     letterSpacing = (-0.1).sp,
                     modifier  = Modifier.fillMaxWidth()
                         .padding(horizontal = 16.dp)
-                        .padding(top = if (post.imageUrls.isNotEmpty()) 12.dp else 0.dp, bottom = 4.dp)
+                        .padding(top = if (post.imageUrls.isNotEmpty() || post.tag.isNotBlank()) 6.dp else 0.dp, bottom = 4.dp)
                 )
                 // Author alias below caption — quiet, small
                 Text(
@@ -852,6 +881,40 @@ private fun PostCard(
                     fontWeight = FontWeight.Medium,
                     modifier  = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp)
                 )
+            }
+            // ── Reaction summary pills ─────────────────────────────────────────
+            val topReactions = post.reactions.entries
+                .filter { it.value.isNotEmpty() }
+                .sortedByDescending { it.value.size }
+                .take(3)
+            if (topReactions.isNotEmpty()) {
+                Row(
+                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    topReactions.forEach { (emoji, uids) ->
+                        Box(
+                            Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(if (_fsDark) Color(0xFF252530) else Color(0xFFF0EDE8))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(emoji, fontSize = 12.sp)
+                                Text("${uids.size}", fontSize = 11.sp, color = IGGray, fontWeight = FontWeight.Medium)
+                            }
+                        }
+                    }
+                    // Total reaction count
+                    val totalReactions = post.reactions.values.sumOf { it.size }
+                    if (totalReactions > topReactions.sumOf { it.value.size }) {
+                        Text("+${totalReactions - topReactions.sumOf { it.value.size }}", fontSize = 11.sp, color = IGGray)
+                    }
+                }
             }
 
             // ── Comments link — soft, understated ────────────────────────────
@@ -864,7 +927,7 @@ private fun PostCard(
                 )
             }
 
-            // ── Action row — calm, icon-only ──────────────────────────────────
+            // ── Action row ────────────────────────────────────────────────────
             HorizontalDivider(
                 color = IGDivider, thickness = 0.5.dp,
                 modifier = Modifier.padding(top = 6.dp)
@@ -873,16 +936,36 @@ private fun PostCard(
                 Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Like — muted heart
-                IconButton(onClick = onLike, modifier = Modifier.size(38.dp)) {
-                    Icon(
-                        if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        null,
-                        tint     = if (liked) IGRed else IGMuted,
-                        modifier = Modifier.size(20.dp)
-                    )
+                // ── Reaction button — short tap = ❤️, long press = picker ──────
+                Box {
+                    IconButton(
+                        onClick   = { onReact(userReaction ?: "❤️") },
+                        modifier  = Modifier.size(38.dp).combinedClickable(
+                            onClick     = { onReact(userReaction ?: "❤️") },
+                            onLongClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                showReactionPicker = true
+                            }
+                        )
+                    ) {
+                        val reactionEmoji = userReaction
+                        if (reactionEmoji != null) {
+                            Text(reactionEmoji, fontSize = 18.sp)
+                        } else {
+                            Icon(Icons.Rounded.FavoriteBorder, null,
+                                tint = IGMuted, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    // Reaction picker popup
+                    if (showReactionPicker) {
+                        ReactionPicker(
+                            currentReaction = userReaction,
+                            onReact = { emoji -> onReact(emoji); showReactionPicker = false },
+                            onDismiss = { showReactionPicker = false }
+                        )
+                    }
                 }
-                // Comment — soft bubble
+                // Comment
                 IconButton(onClick = onComment, modifier = Modifier.size(38.dp)) {
                     Icon(Icons.Rounded.ChatBubbleOutline, null,
                         tint = IGMuted, modifier = Modifier.size(19.dp))
@@ -903,6 +986,15 @@ private fun PostCard(
                     Icon(Icons.Rounded.IosShare, null, tint = IGMuted, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.weight(1f))
+                // ── Bookmark ──────────────────────────────────────────────────
+                IconButton(onClick = onBookmark, modifier = Modifier.size(38.dp)) {
+                    Icon(
+                        if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                        contentDescription = "Save",
+                        tint     = if (isBookmarked) IGAccent else IGMuted,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
                 // Approach for Friendship
                 if (!isOwnPost) {
                     IconButton(
@@ -1160,68 +1252,155 @@ private fun CommentRow(
     onOpenUserProfile: (String) -> Unit = {}
 ) {
     val liked          = c.likedBy.contains(myUid)
+    val isOwn          = c.authorUid == myUid
     val repliesMap     by vm.replies.collectAsStateWithLifecycle()
     val replies        = repliesMap[c.commentId] ?: emptyList()
-    // No LaunchedEffect here — loadReplies is triggered by onToggleExpand (manual) only.
-    // Auto-expand after posting uses the optimistic cache, so no Firestore call needed.
+
+    // ── Edit / Delete state ────────────────────────────────────────────────
+    var showOptions    by remember { mutableStateOf(false) }
+    var isEditing      by remember { mutableStateOf(false) }
+    var editText       by remember(c.commentId) { mutableStateOf(c.text) }
+    val focusReqEdit   = remember { FocusRequester() }
+    val focusMgr       = LocalFocusManager.current
+
+    LaunchedEffect(isEditing) {
+        if (isEditing) kotlinx.coroutines.delay(80).also { focusReqEdit.requestFocus() }
+    }
 
     Column(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp), verticalAlignment = Alignment.Top) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    onClick      = {},
+                    onLongClick  = { if (isOwn) showOptions = true }
+                )
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.Top
+        ) {
             IGAvatar(c.authorAlias, c.authorPhotoUrl, c.authorAvatar, 30.dp)
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                // Single AnnotatedString: bold alias + @mention-coloured text — tappable aliases
-                val annotated = buildCommentAnnotated(c.authorAlias, c.text)
-                ClickableText(
-                    text  = annotated,
-                    style = androidx.compose.ui.text.TextStyle(
-                        fontSize   = 13.sp,
-                        color      = IGBlack,
-                        lineHeight = 20.sp
-                    ),
-                    onClick = { offset ->
-                        annotated.getStringAnnotations("alias", offset, offset)
-                            .firstOrNull()?.let { span ->
-                                vm.lookupUidByAlias(span.item) { uid -> uid?.let { onOpenUserProfile(it) } }
+                if (isEditing) {
+                    // ── Inline edit field ─────────────────────────────────
+                    TextField(
+                        value         = editText,
+                        onValueChange = { editText = it },
+                        modifier      = Modifier.fillMaxWidth().focusRequester(focusReqEdit),
+                        colors        = TextFieldDefaults.colors(
+                            focusedContainerColor   = IGLightGray,
+                            unfocusedContainerColor = IGLightGray,
+                            focusedIndicatorColor   = IGBlue,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor  = Color.Transparent
+                        ),
+                        shape    = RoundedCornerShape(12.dp),
+                        maxLines = 4,
+                        textStyle = LocalTextStyle.current.copy(fontSize = 13.sp, color = IGBlack),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = {
+                            if (editText.isNotBlank()) {
+                                vm.editComment(postId, c.commentId, editText)
+                                isEditing = false
+                                focusMgr.clearFocus()
                             }
-                    }
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically) {
-                    Text(igAgo(c.createdAt), fontSize = 11.sp, color = IGGray)
-                    if (c.likedBy.isNotEmpty()) Text(" · ${c.likedBy.size} likes", fontSize = 11.sp, color = IGGray)
-                    Box(
-                        Modifier.clip(RoundedCornerShape(6.dp))
-                            .clickable(remember{MutableInteractionSource()}, null) { onReply(c.authorAlias) }
-                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                        })
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(top = 4.dp)
                     ) {
-                        Text("Reply", fontSize = 12.sp, color = IGBlue, fontWeight = FontWeight.SemiBold)
+                        TextButton(
+                            onClick = {
+                                editText  = c.text
+                                isEditing = false
+                                focusMgr.clearFocus()
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                        ) { Text("Cancel", fontSize = 12.sp, color = IGGray) }
+                        TextButton(
+                            onClick = {
+                                if (editText.isNotBlank()) {
+                                    vm.editComment(postId, c.commentId, editText)
+                                    isEditing = false
+                                    focusMgr.clearFocus()
+                                }
+                            },
+                            enabled = editText.isNotBlank() && editText != c.text,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                        ) { Text("Save", fontSize = 12.sp, color = IGBlue, fontWeight = FontWeight.SemiBold) }
                     }
-                    if (c.replyCount > 0) {
+                } else {
+                    // ── Normal display ────────────────────────────────────
+                    val annotated = buildCommentAnnotated(c.authorAlias, c.text)
+                    ClickableText(
+                        text  = annotated,
+                        style = androidx.compose.ui.text.TextStyle(
+                            fontSize   = 13.sp,
+                            color      = IGBlack,
+                            lineHeight = 20.sp
+                        ),
+                        onClick = { offset ->
+                            annotated.getStringAnnotations("alias", offset, offset)
+                                .firstOrNull()?.let { span ->
+                                    vm.lookupUidByAlias(span.item) { uid -> uid?.let { onOpenUserProfile(it) } }
+                                }
+                        }
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(igAgo(c.createdAt), fontSize = 11.sp, color = IGGray)
+                        if (c.likedBy.isNotEmpty()) Text(" · ${c.likedBy.size} likes", fontSize = 11.sp, color = IGGray)
+                        // "edited" badge — shown only if Firestore has editedAt (we infer from text being edited)
+                        // We store editedAt server-side; for simplicity show nothing extra unless you add editedAt to VeilComment model
                         Box(
                             Modifier.clip(RoundedCornerShape(6.dp))
-                                .clickable(remember{MutableInteractionSource()}, null) { onToggleExpand() }
+                                .clickable(remember{MutableInteractionSource()}, null) { onReply(c.authorAlias) }
                                 .padding(horizontal = 8.dp, vertical = 6.dp)
                         ) {
-                            Text(
-                                if (isExpanded) "Hide replies"
-                                else "View ${c.replyCount} ${if (c.replyCount == 1) "reply" else "replies"}",
-                                fontSize = 12.sp, color = IGGray, fontWeight = FontWeight.Medium
-                            )
+                            Text("Reply", fontSize = 12.sp, color = IGBlue, fontWeight = FontWeight.SemiBold)
+                        }
+                        if (isOwn) {
+                            Box(
+                                Modifier.clip(RoundedCornerShape(6.dp))
+                                    .clickable(remember{MutableInteractionSource()}, null) { showOptions = true }
+                                    .padding(horizontal = 6.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Rounded.MoreHoriz, null,
+                                    tint = IGGray, modifier = Modifier.size(14.dp))
+                            }
+                        }
+                        if (c.replyCount > 0) {
+                            Box(
+                                Modifier.clip(RoundedCornerShape(6.dp))
+                                    .clickable(remember{MutableInteractionSource()}, null) { onToggleExpand() }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    if (isExpanded) "Hide replies"
+                                    else "View ${c.replyCount} ${if (c.replyCount == 1) "reply" else "replies"}",
+                                    fontSize = 12.sp, color = IGGray, fontWeight = FontWeight.Medium
+                                )
+                            }
                         }
                     }
                 }
             }
-            IconButton(onClick = { vm.toggleCommentLike(postId, c) }, modifier = Modifier.size(30.dp)) {
-                Icon(if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, null,
-                    tint = if (liked) IGRed else IGGray, modifier = Modifier.size(14.dp))
+            if (!isEditing) {
+                IconButton(onClick = { vm.toggleCommentLike(postId, c) }, modifier = Modifier.size(30.dp)) {
+                    Icon(if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder, null,
+                        tint = if (liked) IGRed else IGGray, modifier = Modifier.size(14.dp))
+                }
             }
         }
-        // ── Nested replies ────────────────────────────────────────────────────
+
+        // ── Nested replies ─────────────────────────────────────────────────
         AnimatedVisibility(visible = isExpanded) {
             Column {
                 if (replies.isEmpty()) {
-                    // Still loading
                     Box(Modifier.fillMaxWidth().padding(start = 52.dp, top = 4.dp, bottom = 6.dp)) {
                         CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 1.5.dp, color = IGGray)
                     }
@@ -1253,7 +1432,6 @@ private fun CommentRow(
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text(igAgo(r.createdAt), fontSize = 10.sp, color = IGGray,
                                         modifier = Modifier.padding(top = 2.dp))
-                                    // Reply button on each reply — replies to parent comment, @mentions this user
                                     Box(
                                         Modifier.clip(RoundedCornerShape(6.dp))
                                             .clickable(remember{MutableInteractionSource()}, null) {
@@ -1268,6 +1446,79 @@ private fun CommentRow(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+
+    // ── Comment options bottom sheet (own comment only) ────────────────────
+    if (showOptions) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showOptions = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                Modifier.fillMaxSize()
+                    .background(Color(0xFF2C2825).copy(0.36f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { showOptions = false },
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Column(
+                    Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                        .background(IGCard)
+                        .clickable(remember { MutableInteractionSource() }, null) {}
+                        .navigationBarsPadding()
+                ) {
+                    Box(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 8.dp), Alignment.Center) {
+                        Box(Modifier.width(32.dp).height(3.dp).clip(CircleShape).background(IGMuted.copy(0.4f)))
+                    }
+                    // Edit
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable {
+                                showOptions = false
+                                editText    = c.text
+                                isEditing   = true
+                            }
+                            .padding(horizontal = 20.dp, vertical = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Rounded.Edit, null, tint = IGBlack, modifier = Modifier.size(18.dp))
+                        Text("Edit comment", fontSize = 15.sp, color = IGBlack)
+                    }
+                    HorizontalDivider(color = IGDivider, thickness = 0.5.dp)
+                    // Delete
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable {
+                                showOptions = false
+                                vm.deleteComment(postId, c.commentId)
+                            }
+                            .padding(horizontal = 20.dp, vertical = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Rounded.DeleteOutline, null, tint = IGRed, modifier = Modifier.size(18.dp))
+                        Text("Delete comment", fontSize = 15.sp, color = IGRed, fontWeight = FontWeight.Medium)
+                    }
+                    HorizontalDivider(color = IGDivider, thickness = 0.5.dp)
+                    // Cancel
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .clickable { showOptions = false }
+                            .padding(horizontal = 20.dp, vertical = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Rounded.Close, null, tint = IGGray, modifier = Modifier.size(18.dp))
+                        Text("Cancel", fontSize = 15.sp, color = IGBlack)
+                    }
+                    Spacer(Modifier.height(6.dp))
                 }
             }
         }
@@ -1417,6 +1668,44 @@ private fun CreatePostSheet(vm: FeedViewModel, myAlias: String, onDismiss: () ->
                 }
                 Spacer(Modifier.height(12.dp))
             }
+
+            // ── Tag picker ────────────────────────────────────────────────────
+            Text(
+                "Tag this post",
+                fontSize   = 12.sp,
+                color      = IGGray,
+                fontWeight = FontWeight.Medium,
+                modifier   = Modifier.padding(bottom = 8.dp)
+            )
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(VEIL_POST_TAGS) { tag ->
+                    val selected = vm.draftTag == tag
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (selected) IGAccent
+                                else if (_fsDark) Color(0xFF252530) else Color(0xFFF0EDE8)
+                            )
+                            .clickable {
+                                vm.draftTag = if (selected) "" else tag
+                            }
+                            .padding(horizontal = 14.dp, vertical = 7.dp)
+                    ) {
+                        Text(
+                            tag,
+                            fontSize   = 12.sp,
+                            color      = if (selected) Color.White else IGBlack,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
 
             // Add photo button
             OutlinedButton(
@@ -1747,3 +2036,143 @@ private fun FeedEmptyState(onCreatePost: () -> Unit) {
         }
     }
 }
+
+// ── Tag Filter Row — sticky chips at top of feed ─────────────────────────────
+@Composable
+private fun TagFilterRow(
+    selectedTag  : String,
+    onTagSelected: (String) -> Unit
+) {
+    val allTags = listOf("All") + VEIL_POST_TAGS
+    Surface(
+        color     = IGBg,
+        shadowElevation = 0.dp,
+        modifier  = Modifier.fillMaxWidth()
+    ) {
+        Column {
+            LazyRow(
+                contentPadding        = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(allTags) { tag ->
+                    val selected = tag == selectedTag
+                    val scale by animateFloatAsState(
+                        targetValue   = if (selected) 1.04f else 1f,
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                        label         = "chip_$tag"
+                    )
+                    Box(
+                        Modifier
+                            .scale(scale)
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                if (selected) IGAccent
+                                else if (_fsDark) Color(0xFF1E1E27) else Color(0xFFF0EDE8)
+                            )
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication        = null
+                            ) { onTagSelected(tag) }
+                            .border(
+                                width  = if (selected) 0.dp else 0.8.dp,
+                                color  = if (selected) Color.Transparent else IGBorderSoft,
+                                shape  = RoundedCornerShape(50)
+                            )
+                            .padding(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            tag,
+                            fontSize   = 12.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            color      = if (selected) Color.White else IGBlack,
+                            maxLines   = 1
+                        )
+                    }
+                }
+            }
+            HorizontalDivider(color = IGDivider, thickness = 0.5.dp)
+        }
+    }
+}
+
+// ── Reaction Picker — floating row of 5 emoji (long-press trigger) ────────────
+@Composable
+private fun ReactionPicker(
+    currentReaction: String?,
+    onReact        : (String) -> Unit,
+    onDismiss      : () -> Unit
+) {
+    val reactions = listOf("❤️", "🥀", "🌙", "😂", "🤍")
+    val labels    = listOf("Love", "Felt This", "Relatable", "Funny", "Support")
+
+    // Dismiss on outside click via dialog
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication        = null
+                ) { onDismiss() },
+            contentAlignment = Alignment.BottomStart
+        ) {
+            // Floating pill
+            Box(
+                Modifier
+                    .padding(start = 12.dp, bottom = 160.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        if (_fsDark) Color(0xFF2A2A36) else Color.White,
+                        RoundedCornerShape(50)
+                    )
+                    .shadow(8.dp, RoundedCornerShape(50), ambientColor = Color.Black.copy(0.15f))
+                    .clickable(remember { MutableInteractionSource() }, null) {}  // block dismiss
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    reactions.forEachIndexed { idx, emoji ->
+                        val isActive = emoji == currentReaction
+                        var pressed by remember { mutableStateOf(false) }
+                        val emojiScale by animateFloatAsState(
+                            targetValue   = if (pressed || isActive) 1.35f else 1f,
+                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                            label         = "emoji_$idx"
+                        )
+                        val haptic = LocalHapticFeedback.current
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication        = null
+                                ) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onReact(emoji)
+                                }
+                                .padding(6.dp)
+                        ) {
+                            Text(
+                                emoji,
+                                fontSize = 24.sp,
+                                modifier = Modifier.scale(emojiScale)
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                labels[idx],
+                                fontSize  = 8.sp,
+                                color     = if (isActive) IGAccent else IGGray,
+                                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                                maxLines  = 1
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

@@ -136,8 +136,14 @@ A light monetisation layer — users can purchase visual themes for their profil
 │
 ├── functions/                       # Firebase Cloud Functions (Node.js)
 ├── cloudflare-worker/               # Cloudflare edge functions
-├── website/                         # Landing page assets
-├── docs/assets/                     # README screenshots
+├── veil-api/                        # Payment verification & order APIs
+├── website/                         # Landing page web assets
+├── docs/                            # Project documentation
+│   ├── features/                    # Feature specs, guides, screen flows
+│   ├── dev-notes/                   # Development history, rules & build fixes
+│   ├── internal/                    # Planning, moderation lists & research
+│   └── assets/                      # App screenshots & promotional assets
+├── scripts/                         # Project maintenance & utility scripts
 ├── firestore.rules                  # Firestore security rules
 ├── storage.rules                    # Firebase Storage security rules
 ├── firestore.indexes.json           # Firestore composite indexes
