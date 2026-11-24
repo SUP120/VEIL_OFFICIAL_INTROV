@@ -29,6 +29,11 @@
         android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
         tools:node="remove" />
 
+    <!-- The photo cropper requests portrait orientation on devices that support it. -->
+    <uses-feature
+        android:name="android.hardware.screen.portrait"
+        android:required="false" />
+
     <application
         android:name=".VeilApplication"
         android:allowBackup="false"
@@ -87,6 +92,10 @@
                 <action android:name="com.ns.findyourintroverfriend.ACTION_DM_REPLY" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".notifications.GroupNotificationReplyReceiver"
+            android:exported="false" />
 
         <!-- ML Kit: download face detection model at install time -->
         <!-- Without this, the model downloads lazily on first use and may not be ready -->

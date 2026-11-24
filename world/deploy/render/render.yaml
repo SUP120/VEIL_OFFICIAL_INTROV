@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: veil-world
+    runtime: docker
+    region: singapore
+    plan: free
+    envVars:
+      - key: VEIL_FIREBASE_PROJECT_ID
+        value: introver-match-app
+      - key: VEIL_FIREBASE_WEB_API_KEY
+        sync: false

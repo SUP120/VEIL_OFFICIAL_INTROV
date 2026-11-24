@@ -1,64 +1,74 @@
 package com.ns.findyourintroverfriend.util
 
-import kotlin.math.exp
 import kotlin.math.ln
+import kotlin.math.pow
 import kotlin.random.Random
 
-/**
- * VeilFeedRanker — Instagram/YouTube-style feed ranking.
- *
- * Algorithm:
- *   • Top 3 most recent posts are ALWAYS pinned at positions #1, #2, #3
- *     (guarantees fresh content is immediately visible to everyone).
- *   • Remaining posts ranked by:
- *       score = (engagementScore * recencyFactor) + sessionNoise
- *       engagementScore  = likes * 3 + comments * 2
- *       recencyFactor    = exp(-age_hours / HALF_LIFE)  (48h half-life)
- *       sessionNoise     = seeded per (postId + sessionSalt) — reshuffles on refresh
- */
 object FeedRanker {
+    private var sessionSalt = Random.nextLong()
 
-    /** Rotated on every pull-to-refresh */
-    private var SESSION_SALT = Random.nextLong()
-
-    fun newSession() { SESSION_SALT = Random.nextLong() }
-
-    private const val HALF_LIFE_HOURS = 48.0
-    private const val NOISE_WEIGHT    = 0.35f
+    fun newSession() { sessionSalt = Random.nextLong() }
 
     fun <T> rank(
-        posts          : List<T>,
-        getPostId      : (T) -> String,
-        getLikeCount   : (T) -> Int,
+        posts: List<T>,
+        getPostId: (T) -> String,
+        getLikeCount: (T) -> Int,
         getCommentCount: (T) -> Int,
-        getCreatedAt   : (T) -> Long,
-        isDeveloper    : (T) -> Boolean = { false }
+        getCreatedAt: (T) -> Long,
+        isDeveloper: (T) -> Boolean = { false },
+        getAuthorId: (T) -> String = { "" },
+        getAffinity: (T) -> Double = { 0.0 },
+        getVoteCount: (T) -> Long = { 0L },
+        reserveFresh: Boolean = true,
+        lastViewedAt: (T) -> Long = { 0L },
+        explorationSeed: Long? = null,
+        precedingAuthors: List<String> = emptyList(),
+        now: Long = System.currentTimeMillis()
     ): List<T> {
-        if (posts.isEmpty()) return posts
+        val candidates = posts.distinctBy(getPostId)
+        fun author(post: T) = getAuthorId(post).ifBlank { getPostId(post) }
+        fun ageHours(post: T) = (now - getCreatedAt(post)).coerceAtLeast(0L) / 3_600_000.0
+        fun soonAfterView(post: T) = lastViewedAt(post).let { it > 0 && now - it < 72 * 3_600_000L }
 
-        val now = System.currentTimeMillis()
+        val fresh = if (reserveFresh) candidates.filter { ageHours(it) <= 12 && !soonAfterView(it) }
+            .sortedByDescending(getCreatedAt).distinctBy { author(it) }.take(if (explorationSeed == null) 2 else 1)
+            else emptyList()
+        val freshIds = fresh.mapTo(mutableSetOf(), getPostId)
+        val remaining = candidates.filterNot { getPostId(it) in freshIds }.map { post ->
+            val age = ageHours(post)
+            val freshness = 0.5.pow(age / 40.0)
+            val engagement = ln(1.0 + getLikeCount(post).coerceAtLeast(0)) +
+                1.3 * ln(1.0 + getCommentCount(post).coerceAtLeast(0)) +
+                0.5 * ln(1.0 + getVoteCount(post).coerceAtLeast(0))
+            val affinity = getAffinity(post).coerceIn(0.0, 1.0)
+            val announcement = if (isDeveloper(post) && age <= 72) 0.35 else 0.0
+            val random = Random(getPostId(post).hashCode().toLong() xor (explorationSeed ?: sessionSalt)).nextDouble()
+            val relevance = (2.0 + engagement.coerceAtMost(9.0) + affinity * 1.6 + announcement) * freshness
+            val score = if (explorationSeed == null) relevance + random * 0.04 * freshness else {
+                // Keep previously viewed posts available while reserving the top of Home for unseen ones.
+                (relevance + 0.6 * 0.5.pow(age / 168.0)) *
+                    (if (soonAfterView(post)) 0.16 else 1.0) * (0.82 + random * 0.42)
+            }
+            post to score
+        }.sortedByDescending { (_, score) -> score }.toMutableList()
 
-        // ── Step 1: Pin top 3 most recent posts first ─────────────────────
-        val sortedByTime  = posts.sortedByDescending { getCreatedAt(it) }
-        val top3          = sortedByTime.take(3)
-        val top3Ids       = top3.map { getPostId(it) }.toSet()
-        val rest          = posts.filter { getPostId(it) !in top3Ids }
-
-        // ── Step 2: Rank the remaining posts ──────────────────────────────
-        val rankedRest = rest.sortedByDescending { post ->
-            if (isDeveloper(post)) return@sortedByDescending Double.MAX_VALUE
-
-            val ageMs    = (now - getCreatedAt(post)).coerceAtLeast(0L)
-            val ageHours = ageMs / 3_600_000.0
-            val engagement = getLikeCount(post) * 3.0 + getCommentCount(post) * 2.0
-            val recency    = exp(-ageHours * ln(2.0) / HALF_LIFE_HOURS)
-            val postSeed   = getPostId(post).hashCode().toLong() xor SESSION_SALT
-            val noise      = Random(postSeed).nextDouble()
-            val baseScore  = (engagement + 1.0) * recency
-            baseScore * (1.0 - NOISE_WEIGHT) + noise * NOISE_WEIGHT * baseScore.coerceAtLeast(1.0)
+        val ordered = fresh.toMutableList()
+        while (remaining.isNotEmpty()) {
+            val recentAuthors = (precedingAuthors.takeLast(2) + ordered.takeLast(2).map { author(it) }).takeLast(2)
+            val minimumComparableScore = remaining.first().second * 0.70
+            val diverse = remaining.take(6).indexOfFirst { (post, score) ->
+                score >= minimumComparableScore && author(post) !in recentAuthors
+            }
+            val next = if (explorationSeed != null && ordered.size % 4 == 2) {
+                val discoveries = remaining.take(10).withIndex().filter { (_, scored) ->
+                    val (post, score) = scored
+                    score >= minimumComparableScore && !soonAfterView(post) &&
+                        ageHours(post) <= 14 * 24 && author(post) !in recentAuthors
+                }
+                discoveries.randomOrNull(Random(explorationSeed xor ordered.size.toLong()))?.index ?: diverse
+            } else diverse
+            ordered += remaining.removeAt(next.coerceAtLeast(0)).first
         }
-
-        // ── Step 3: Prepend pinned top-3 ─────────────────────────────────
-        return top3 + rankedRest
+        return ordered
     }
 }

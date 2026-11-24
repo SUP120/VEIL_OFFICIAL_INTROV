@@ -15,7 +15,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.layout.ContentScale
@@ -27,19 +26,31 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
-import com.ns.findyourintroverfriend.util.VeilThemeManager
+import com.ns.findyourintroverfriend.report.BlockUserDialog
+import com.ns.findyourintroverfriend.report.SafetyForm
+import com.ns.findyourintroverfriend.report.SafetyTarget
+import com.ns.findyourintroverfriend.report.contactAvailability
+import com.ns.findyourintroverfriend.ui.theme.currentProfilePalette
+import com.ns.findyourintroverfriend.util.LocalVeilIsDark
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
-private val PBg      = Color(0xFFFFFFFF)
-private val PBlack   = Color(0xFF1A1A1A)
-private val PGray    = Color(0xFF8A8A8A)
-private val PDivider = Color(0xFFE8E8E8)
-private val PAccent  = Color(0xFF6366F1)   // indigo
-private val PSurface = Color(0xFFF7F7F8)
-private val PGold    = Color(0xFFF59E0B)
+private val PBg: Color
+    @Composable get() = currentProfilePalette.background
+private val PBlack: Color
+    @Composable get() = currentProfilePalette.text
+private val PGray: Color
+    @Composable get() = currentProfilePalette.secondaryText
+private val PDivider: Color
+    @Composable get() = currentProfilePalette.border
+private val PAccent: Color
+    @Composable get() = currentProfilePalette.accent
+private val PSurface: Color
+    @Composable get() = currentProfilePalette.tintedSurface
 
 data class UserProfileData(
     val uid               : String         = "",
@@ -77,15 +88,30 @@ fun FeedUserProfileScreen(
     val db    = remember { FirebaseFirestore.getInstance() }
     val auth  = remember { FirebaseAuth.getInstance() }
     val myUid = auth.currentUser?.uid ?: ""
+    var safetyMenu by remember(targetUid) { mutableStateOf(false) }
+    var sendingRequest by remember(targetUid) { mutableStateOf(false) }
+    var reportUser by remember(targetUid) { mutableStateOf(false) }
+    var blockUser by remember(targetUid) { mutableStateOf(false) }
+    val canContact = contactAvailability(myUid, targetUid)
+    var username by remember(targetUid, myUid) { mutableStateOf("") }
+    LaunchedEffect(targetUid, myUid) {
+        if (targetUid.isNotBlank() && myUid.isNotBlank()) {
+            val collection = if (targetUid == myUid) "peopleSettings" else "peopleProfiles"
+            username = safeGet { db.collection(collection).document(targetUid).get().await().getString("username") }.orEmpty()
+        }
+    }
+
+    if (reportUser) SafetyForm(SafetyTarget("profile", "Report User", reportedUserId = targetUid)) { reportUser = false }
+    if (blockUser) BlockUserDialog(myUid, targetUid, onDismiss = { blockUser = false }, onBlocked = { blockUser = false })
 
     var profile       by remember { mutableStateOf(UserProfileData()) }
     val myApproaches  by approachVm.myApproaches.collectAsStateWithLifecycle()
-    val freeLeft      by approachVm.freeLeft.collectAsStateWithLifecycle()
     val result        by approachVm.result.collectAsStateWithLifecycle()
     val cookieBalance by cookieVm.cookieBalance.collectAsStateWithLifecycle()
     val myFollowing   by approachVm.myFollowing.collectAsStateWithLifecycle()
     var showCookieDialog by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     var myOwnAlias by remember { mutableStateOf(auth.currentUser?.displayName ?: "Anonymous") }
     var myOwnPhoto by remember { mutableStateOf(auth.currentUser?.photoUrl?.toString() ?: "") }
@@ -114,31 +140,15 @@ fun FeedUserProfileScreen(
             val userDoc  = safeGet { db.collection("users").document(targetUid).get().await() }
             val swipeDoc = safeGet { db.collection("swipeProfiles").document(targetUid).get().await() }
 
-            @Suppress("UNCHECKED_CAST")
             val rawPosts = safeGet {
                 db.collection("veilPosts").whereEqualTo("authorUid", targetUid).limit(30).get().await()
             }?.documents ?: emptyList()
 
-            val posts = rawPosts.mapNotNull { doc ->
-                try {
-                    VeilPost(
-                        postId = doc.id,
-                        authorUid      = doc.getString("authorUid")      ?: "",
-                        authorAlias    = doc.getString("authorAlias")    ?: "",
-                        authorPhotoUrl = doc.getString("authorPhotoUrl") ?: "",
-                        authorAvatar   = doc.getString("authorAvatar")   ?: "",
-                        caption        = doc.getString("caption")        ?: "",
-                        imageUrls      = (doc.get("imageUrls") as? List<String>) ?: emptyList(),
-                        likedBy        = (doc.get("likedBy")   as? List<String>) ?: emptyList(),
-                        commentsCount  = doc.getLong("commentsCount") ?: 0L,
-                        createdAt      = doc.getLong("createdAt")     ?: 0L
-                    )
-                } catch (_: Exception) { null }
-            }.sortedByDescending { it.createdAt }
+            val posts = rawPosts.mapNotNull(DocumentSnapshot::toProfilePost).sortedByDescending { it.createdAt }
 
-            val alias = posts.firstOrNull()?.authorAlias?.takeIf { it.isNotBlank() }
+            val alias = userDoc?.getString("alias")?.takeIf { it.isNotBlank() }
                 ?: swipeDoc?.getString("alias")?.takeIf { it.isNotBlank() }
-                ?: userDoc?.getString("alias")?.takeIf { it.isNotBlank() }
+                ?: posts.firstOrNull()?.authorAlias?.takeIf { it.isNotBlank() }
                 ?: "Anonymous"
 
             val isCameraShy = swipeDoc?.getBoolean("isCameraShy") ?: false
@@ -177,9 +187,20 @@ fun FeedUserProfileScreen(
 
     LaunchedEffect(result) {
         when (val r = result) {
-            is ApproachResult.Sent        -> { snackbar.showSnackbar("Request sent ✓"); approachVm.resetResult() }
-            is ApproachResult.NeedCookies -> { showCookieDialog = true; approachVm.resetResult() }
-            is ApproachResult.Error       -> { snackbar.showSnackbar(r.message); approachVm.resetResult() }
+            is ApproachResult.Sent -> {
+                sendingRequest = false
+                approachVm.resetResult()
+            }
+            is ApproachResult.NeedCookies -> {
+                sendingRequest = false
+                showCookieDialog = true
+                approachVm.resetResult()
+            }
+            is ApproachResult.Error -> {
+                sendingRequest = false
+                approachVm.resetResult()
+                scope.launch { snackbar.showSnackbar(r.message) }
+            }
             else -> Unit
         }
     }
@@ -191,14 +212,48 @@ fun FeedUserProfileScreen(
             TopAppBar(
                 title = {
                     Text(
-                        if (profile.isLoading) "" else profile.alias,
+                        "Profile",
                         fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = PBlack,
                         maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Rounded.ArrowBackIosNew, null, tint = PBlack, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Rounded.ArrowBackIosNew, "Back", tint = PBlack, modifier = Modifier.size(18.dp))
+                    }
+                },
+                actions = {
+                    if (myUid.isNotBlank() && targetUid.isNotBlank() && targetUid != myUid) {
+                        Box {
+                            IconButton(onClick = { safetyMenu = true }) {
+                                Icon(Icons.Rounded.MoreVert, "Profile safety options", tint = PBlack)
+                            }
+                            val menuBackground = Color(0xFF282329)
+                            val menuForeground = Color(0xFFFFF7F3)
+                            MaterialTheme(colorScheme = MaterialTheme.colorScheme.copy(
+                                surface = menuBackground,
+                                surfaceContainer = menuBackground,
+                                surfaceTint = menuBackground,
+                                onSurface = menuForeground
+                            )) {
+                                val menuColors = MenuDefaults.itemColors(
+                                    textColor = menuForeground, leadingIconColor = menuForeground,
+                                    disabledTextColor = Color(0xFFBCB0B7), disabledLeadingIconColor = Color(0xFFBCB0B7)
+                                )
+                                DropdownMenu(expanded = safetyMenu, onDismissRequest = { safetyMenu = false }) {
+                                    DropdownMenuItem(text = { Text("Report user") }, colors = menuColors,
+                                        leadingIcon = { Icon(Icons.Rounded.Flag, null) }, onClick = {
+                                            safetyMenu = false
+                                            reportUser = true
+                                        })
+                                    DropdownMenuItem(text = { Text("Block user") }, colors = menuColors,
+                                        leadingIcon = { Icon(Icons.Rounded.Block, null) }, enabled = canContact == true, onClick = {
+                                            safetyMenu = false
+                                            blockUser = true
+                                        })
+                                }
+                            }
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = PBg),
@@ -207,21 +262,27 @@ fun FeedUserProfileScreen(
     ) { pad ->
         Box(Modifier.fillMaxSize().padding(pad)) {
             when {
+                canContact == false -> Text("Direct contact is unavailable.", Modifier.align(Alignment.Center), color = PBlack)
                 profile.isLoading -> ProfileSkeletonLoader()
                 profile.error != null -> ProfileErrorState(profile.error!!) {
                     profile = UserProfileData(isLoading = true)
                 }
                 else -> ProfileContent(
                     profile           = profile,
+                    username          = username,
                     isOwnProfile      = targetUid == myUid,
                     alreadyApproached = targetUid in myApproaches,
                     isFollowing       = targetUid in myFollowing,
-                    freeLeft          = freeLeft,
+                    sendingRequest    = sendingRequest,
+                    canSendRequest    = canContact == true,
                     onApproach        = {
-                        approachVm.sendFreeApproach(
-                            toUid = targetUid, toAlias = profile.alias,
-                            myAlias = myOwnAlias, myAvatar = "", myPhotoUrl = myOwnPhoto
-                        )
+                        if (!sendingRequest && canContact == true) {
+                            sendingRequest = true
+                            approachVm.sendFreeApproach(
+                                toUid = targetUid, toAlias = profile.alias,
+                                myAlias = myOwnAlias, myAvatar = "", myPhotoUrl = myOwnPhoto
+                            )
+                        }
                     }
                 )
             }
@@ -235,38 +296,37 @@ fun FeedUserProfileScreen(
 @Composable
 private fun ProfileContent(
     profile          : UserProfileData,
+    username         : String,
     isOwnProfile     : Boolean,
     alreadyApproached: Boolean,
     isFollowing      : Boolean,
-    freeLeft         : Int,
+    sendingRequest   : Boolean,
+    canSendRequest   : Boolean,
     onApproach       : () -> Unit
 ) {
     var expandedPost by remember { mutableStateOf<VeilPost?>(null) }
 
     Box(Modifier.fillMaxSize()) {
-        LazyVerticalGrid(columns = GridCells.Fixed(3), modifier = Modifier.fillMaxSize()) {
-            item(span = { GridItemSpan(3) }) {
-                ProfileHeader(profile, isOwnProfile, alreadyApproached, isFollowing, freeLeft, onApproach)
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 150.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                ProfileHeader(
+                    profile, username, isOwnProfile, alreadyApproached,
+                    isFollowing, sendingRequest, canSendRequest, onApproach
+                )
             }
-            item(span = { GridItemSpan(3) }) {
-                Column {
-                    HorizontalDivider(color = PDivider, thickness = 0.5.dp)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                        Box(
-                            Modifier.padding(vertical = 10.dp)
-                                .drawBehind {
-                                    drawLine(Color(0xFF1A1A1A), Offset(0f, size.height),
-                                        Offset(size.width, size.height), strokeWidth = 2f)
-                                }.padding(horizontal = 24.dp)
-                        ) {
-                            Icon(Icons.Rounded.GridView, null, tint = PBlack, modifier = Modifier.size(22.dp))
-                        }
-                    }
-                    HorizontalDivider(color = PDivider, thickness = 0.5.dp)
-                }
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Text("Posts", fontSize = 23.sp, fontWeight = FontWeight.SemiBold, color = PBlack,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
             }
             if (profile.posts.isEmpty()) {
-                item(span = { GridItemSpan(3) }) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     Box(Modifier.fillMaxWidth().padding(vertical = 80.dp), Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Icon(Icons.Rounded.GridView, null, tint = PDivider, modifier = Modifier.size(40.dp))
@@ -275,11 +335,10 @@ private fun ProfileContent(
                     }
                 }
             } else {
-                items(profile.posts) { post ->
+                items(profile.posts, key = { it.postId }) { post ->
                     ProfilePostTile(post, onClick = { expandedPost = post })
                 }
             }
-            item(span = { GridItemSpan(3) }) { Spacer(Modifier.height(40.dp)) }
         }
         expandedPost?.let { post ->
             PostExpandOverlay(post = post, onDismiss = { expandedPost = null })
@@ -297,255 +356,129 @@ private fun ProfileSkeletonLoader() {
         label = "pshimmer"
     )
     val brush = Brush.linearGradient(
-        colors = listOf(Color(0xFFE8E8E8), Color(0xFFF6F6F6), Color(0xFFE8E8E8)),
-        start  = Offset(shimmerX, 0f),
-        end    = Offset(shimmerX + 400f, 0f)
+        colors = listOf(PSurface, PDivider, PSurface),
+        start = Offset(shimmerX, 0f),
+        end = Offset(shimmerX + 400f, 0f)
     )
-
-    LazyVerticalGrid(columns = GridCells.Fixed(3), modifier = Modifier.fillMaxSize(),
-        userScrollEnabled = false) {
-        // Header skeleton
-        item(span = { GridItemSpan(3) }) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 20.dp, bottom = 16.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    // Avatar circle
-                    Box(Modifier.size(80.dp).clip(CircleShape).background(brush))
-                    // Stats
-                    Row(Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        repeat(2) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Box(Modifier.width(28.dp).height(16.dp).clip(RoundedCornerShape(4.dp)).background(brush))
-                                Box(Modifier.width(44.dp).height(10.dp).clip(RoundedCornerShape(4.dp)).background(brush))
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.height(14.dp))
-                // Name line
-                Box(Modifier.fillMaxWidth(0.38f).height(14.dp).clip(RoundedCornerShape(5.dp)).background(brush))
-                Spacer(Modifier.height(8.dp))
-                // Sub line (joined date)
-                Box(Modifier.fillMaxWidth(0.28f).height(10.dp).clip(RoundedCornerShape(4.dp)).background(brush))
-                Spacer(Modifier.height(16.dp))
-                // Button placeholder
-                Box(Modifier.fillMaxWidth().height(38.dp).clip(RoundedCornerShape(10.dp)).background(brush))
-            }
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(150.dp), modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        userScrollEnabled = false
+    ) {
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            Box(Modifier.fillMaxWidth().height(222.dp).clip(RoundedCornerShape(28.dp)).background(brush))
         }
-        // Divider + tab bar
-        item(span = { GridItemSpan(3) }) {
-            HorizontalDivider(color = PDivider, thickness = 0.5.dp)
-            Spacer(Modifier.height(44.dp)) // tab bar height placeholder
-            HorizontalDivider(color = PDivider, thickness = 0.5.dp)
-        }
-        // Grid tile skeletons
-        items(9) {
-            Box(
-                Modifier.aspectRatio(1f).padding(2.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(brush)
-            )
+        items(6) {
+            Box(Modifier.aspectRatio(1.15f).clip(RoundedCornerShape(18.dp)).background(brush))
         }
     }
 }
 
 @Composable
 private fun ProfileHeader(
-    profile          : UserProfileData,
-    isOwnProfile     : Boolean,
+    profile: UserProfileData,
+    username: String,
+    isOwnProfile: Boolean,
     alreadyApproached: Boolean,
-    isFollowing      : Boolean,
-    freeLeft         : Int,
-    onApproach       : () -> Unit
+    isFollowing: Boolean,
+    sendingRequest: Boolean,
+    canSendRequest: Boolean,
+    onApproach: () -> Unit
 ) {
-    Column(
-        Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 20.dp, bottom = 4.dp)
-    ) {
-        // Top row: Avatar + Stats
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(24.dp)
+    Column(Modifier.fillMaxWidth()) {
+        val shape = RoundedCornerShape(28.dp)
+        val heroEnd = if (LocalVeilIsDark.current) Color(0xFF362635) else Color(0xFFF8EEF4)
+        Column(
+            Modifier.fillMaxWidth().clip(shape).background(Brush.linearGradient(listOf(PSurface, heroEnd)))
+                .border(1.dp, PDivider, shape).padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Avatar
-            Box(Modifier.size(80.dp)) {
-                if (profile.photoUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = profile.photoUrl, contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().clip(CircleShape)
-                            .border(2.dp, PAccent, CircleShape)
-                    )
-                } else {
-                    // Monogram avatar — clean and minimal
-                    Box(
-                        Modifier.fillMaxSize().clip(CircleShape)
-                            .background(Brush.linearGradient(listOf(Color(0xFFEEF0FF), Color(0xFFF3F4FF)))),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            profile.alias.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
-                            fontSize = 30.sp, fontWeight = FontWeight.Bold, color = PAccent
-                        )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Box(Modifier.size(68.dp).clip(CircleShape).background(PBg)
+                    .border(1.dp, PDivider, CircleShape), contentAlignment = Alignment.Center) {
+                    if (profile.photoUrl.isNotBlank()) {
+                        AsyncImage(model = profile.photoUrl, contentDescription = null,
+                            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    } else {
+                        Text(profile.alias.firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                            fontSize = 28.sp, fontWeight = FontWeight.SemiBold, color = PAccent)
+                    }
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(profile.alias, fontSize = 27.sp, fontWeight = FontWeight.SemiBold, color = PBlack,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    if (username.isNotBlank()) {
+                        Text("@$username", fontSize = 14.sp, color = PAccent,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (profile.joinedAt > 0L) {
+                        val joined = remember(profile.joinedAt) {
+                            java.text.SimpleDateFormat("MMM yyyy", java.util.Locale.getDefault())
+                                .format(java.util.Date(profile.joinedAt))
+                        }
+                        Text("Joined $joined", fontSize = 13.sp, color = PGray)
                     }
                 }
             }
-
-            // Stats row — Posts + Introvert Friends only
-            Row(
-                Modifier.weight(1f),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            HorizontalDivider(color = PDivider)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 StatPill(profile.postCount.toString(), "Posts")
-                // Vertical divider
-                Box(Modifier.width(1.dp).height(32.dp).background(PDivider))
-                StatPill(profile.matchCount.toString(), "Introvert Friends")
+                StatPill(profile.matchCount.toString(), "Friends")
             }
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        // Name + days-since-joined badge inline
-        val daysSinceJoined = if (profile.joinedAt > 0L)
-            ((System.currentTimeMillis() - profile.joinedAt) / 86_400_000L).toInt().coerceAtLeast(1)
-        else 0
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(profile.alias, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = PBlack)
-            if (daysSinceJoined > 0) {
-                Box(
-                    Modifier.clip(RoundedCornerShape(6.dp))
-                        .background(PSurface)
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
+            if (!isOwnProfile && (sendingRequest || alreadyApproached || isFollowing)) {
+                Surface(
+                    color = PBg,
+                    border = BorderStroke(1.dp, PDivider),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
-                    Text(
-                        "Day $daysSinceJoined",
-                        fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = PAccent
-                    )
-                }
-            }
-        }
-
-        // Joined date — small, subtle
-        if (profile.joinedAt > 0L) {
-            val months = listOf("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")
-            val cal = java.util.Calendar.getInstance().apply { timeInMillis = profile.joinedAt }
-            val joined = "Joined ${months[cal.get(java.util.Calendar.MONTH)]} ${cal.get(java.util.Calendar.YEAR)}"
-            Text(joined, fontSize = 12.sp, color = PGray, modifier = Modifier.padding(top = 2.dp))
-        }
-
-        // Approach / Following button
-        if (!isOwnProfile) {
-            Spacer(Modifier.height(14.dp))
-            when {
-                isFollowing -> {
-                    OutlinedButton(
-                        onClick  = {},
-                        enabled  = false,
-                        modifier = Modifier.fillMaxWidth().height(38.dp),
-                        shape    = RoundedCornerShape(10.dp),
-                        border   = BorderStroke(1.dp, PDivider)
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 13.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(Icons.Rounded.Check, null, tint = PGray, modifier = Modifier.size(15.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Friends", color = PGray, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-                alreadyApproached -> {
-                    OutlinedButton(
-                        onClick  = {},
-                        enabled  = false,
-                        modifier = Modifier.fillMaxWidth().height(38.dp),
-                        shape    = RoundedCornerShape(10.dp),
-                        border   = BorderStroke(1.dp, PAccent.copy(0.4f))
-                    ) {
-                        Icon(Icons.Rounded.HourglassTop, null, tint = PAccent, modifier = Modifier.size(15.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Request Sent", color = PAccent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-                else -> {
-                    Button(
-                        onClick  = onApproach,
-                        modifier = Modifier.fillMaxWidth().height(38.dp),
-                        shape    = RoundedCornerShape(10.dp),
-                        colors   = ButtonDefaults.buttonColors(containerColor = PBlack)
-                    ) {
-                        Icon(Icons.Rounded.PersonAdd, null, tint = Color.White, modifier = Modifier.size(15.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            "Connect",
-                            color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
-        }
-
-        // Own-profile settings section — Appearance
-        if (isOwnProfile) {
-            Spacer(Modifier.height(16.dp))
-
-            // Section header
-            Text(
-                "APPEARANCE",
-                fontSize      = 10.sp,
-                fontWeight    = FontWeight.SemiBold,
-                color         = PGray,
-                letterSpacing = 1.sp
-            )
-            Spacer(Modifier.height(8.dp))
-
-            // Three-segment theme toggle: System / Light / Dark
-            val ctx         = androidx.compose.ui.platform.LocalContext.current
-            val currentMode = VeilThemeManager.themeMode
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .border(0.6.dp, PDivider, RoundedCornerShape(10.dp))
-                    .background(PSurface)
-            ) {
-                val segments = listOf(
-                    Triple(VeilThemeManager.ThemeMode.SYSTEM, "System",  "⊙"),
-                    Triple(VeilThemeManager.ThemeMode.LIGHT,  "Light",   "☀"),
-                    Triple(VeilThemeManager.ThemeMode.DARK,   "Dark",    "🌙"),
-                )
-                segments.forEachIndexed { idx, (mode, label, icon) ->
-                    val isSelected = currentMode == mode
-                    val bg by animateColorAsState(
-                        if (isSelected) PBlack else Color.Transparent,
-                        tween(220), label = "seg_$idx"
-                    )
-                    val textColor by animateColorAsState(
-                        if (isSelected) Color.White else PGray,
-                        tween(220), label = "tc_$idx"
-                    )
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(3.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(bg)
-                            .clickable { VeilThemeManager.setTheme(ctx, mode) }
-                            .padding(vertical = 9.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment     = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Text(icon,  fontSize = 12.sp, color = textColor)
-                            Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = textColor)
+                        Box(Modifier.size(36.dp).background(PSurface, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+                            if (sendingRequest) {
+                                CircularProgressIndicator(Modifier.size(17.dp), color = PAccent, strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Rounded.Check, null, tint = PAccent, modifier = Modifier.size(19.dp))
+                            }
+                        }
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                when {
+                                    isFollowing -> "Connected"
+                                    sendingRequest -> "Sending request…"
+                                    else -> "Request sent"
+                                },
+                                fontWeight = FontWeight.SemiBold, color = PBlack
+                            )
+                            if (!isFollowing && !sendingRequest) {
+                                Text("Waiting for a response", fontSize = 12.sp, color = PGray)
+                            }
                         }
                     }
                 }
+            } else if (!isOwnProfile) {
+                Button(
+                    onClick = onApproach, enabled = canSendRequest,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = PAccent,
+                        contentColor = currentProfilePalette.onAccent,
+                        disabledContainerColor = PBg,
+                        disabledContentColor = PGray
+                    )
+                ) {
+                    Icon(Icons.Rounded.PersonAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Connect", fontWeight = FontWeight.SemiBold)
+                }
             }
         }
-
-        Spacer(Modifier.height(16.dp))
     }
 }
 
@@ -557,71 +490,48 @@ private fun StatPill(value: String, label: String) {
     }
 }
 
+internal fun DocumentSnapshot.toProfilePost(): VeilPost? = try {
+    VeilPost(
+        postId = id,
+        authorUid = getString("authorUid").orEmpty(),
+        authorAlias = getString("authorAlias").orEmpty(),
+        authorPhotoUrl = getString("authorPhotoUrl").orEmpty(),
+        authorAvatar = getString("authorAvatar").orEmpty(),
+        caption = getString("caption").orEmpty(),
+        imageUrls = (get("imageUrls") as? List<*>)?.filterIsInstance<String>().orEmpty(),
+        likedBy = (get("likedBy") as? List<*>)?.filterIsInstance<String>().orEmpty(),
+        commentsCount = getLong("commentsCount") ?: 0L,
+        createdAt = safeGetMillis("createdAt") ?: 0L
+    )
+} catch (_: Exception) { null }
+
 // ── Post Grid Tile ────────────────────────────────────────────────────────────
 @Composable
-private fun ProfilePostTile(post: VeilPost, onClick: () -> Unit = {}) {
+internal fun ProfilePostTile(post: VeilPost, onClick: () -> Unit = {}) {
+    val shape = RoundedCornerShape(18.dp)
     Box(
-        Modifier.aspectRatio(1f)
-            .padding(2.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(PSurface)
-            .border(0.5.dp, PDivider, RoundedCornerShape(6.dp))
-            .clickable(onClick = onClick)
+        Modifier.aspectRatio(1.15f).clip(shape).background(PSurface)
+            .border(1.dp, PDivider, shape).clickable(onClickLabel = "Open post", onClick = onClick)
     ) {
         if (post.imageUrls.isNotEmpty()) {
-            val thumb = com.ns.findyourintroverfriend.util.CloudinaryUtil
-                .thumbnail(post.imageUrls.first(), width = 200, quality = 45)
-            AsyncImage(model = thumb, contentDescription = null,
+            val thumbnail = com.ns.findyourintroverfriend.util.CloudinaryUtil
+                .thumbnail(post.imageUrls.first(), width = 400, quality = 60)
+            AsyncImage(model = thumbnail, contentDescription = post.caption.ifBlank { "Photo post" },
                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            if (post.imageUrls.size > 1)
-                Icon(Icons.Rounded.Collections, null, tint = Color.White,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(15.dp))
+            if (post.imageUrls.size > 1) {
+                Icon(Icons.Rounded.Collections, "Multiple photos", tint = Color.White,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(18.dp))
+            }
         } else {
-            // Text post tile — clean minimal look, NO gradient brush (crash-safe)
-            Box(
-                Modifier.fillMaxSize().background(Color(0xFFF0F0FF)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    post.caption.take(60).let { if (post.caption.length > 60) "$it…" else it },
-                    fontSize   = 9.5.sp,
-                    color      = PBlack.copy(0.75f),
-                    textAlign  = TextAlign.Center,
-                    lineHeight = 13.sp,
-                    modifier   = Modifier.padding(8.dp)
-                )
-            }
-            // "T" badge top-right corner
-            Box(
-                Modifier.align(Alignment.TopEnd).padding(5.dp)
-                    .size(16.dp).clip(CircleShape)
-                    .background(Color.White.copy(0.85f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("T", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = PAccent)
-            }
-        }
-        // Like count overlay — crash-safe solid scrim instead of verticalGradient
-        if (post.likedBy.isNotEmpty()) {
-            Box(
-                Modifier.align(Alignment.BottomStart)
-                    .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.30f))
-                    .padding(horizontal = 5.dp, vertical = 4.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Icon(Icons.Rounded.Favorite, null, tint = Color.White, modifier = Modifier.size(10.dp))
-                    Text("${post.likedBy.size}", fontSize = 9.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
-                }
-            }
+            Text(post.caption.ifBlank { "Post" }, color = PBlack, fontSize = 14.sp, lineHeight = 20.sp,
+                maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(12.dp))
         }
     }
 }
 
 // ── Post Expand Overlay ───────────────────────────────────────────────────────
 @Composable
-private fun PostExpandOverlay(post: VeilPost, onDismiss: () -> Unit) {
+internal fun PostExpandOverlay(post: VeilPost, onDismiss: () -> Unit) {
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
         properties = androidx.compose.ui.window.DialogProperties(
@@ -629,7 +539,7 @@ private fun PostExpandOverlay(post: VeilPost, onDismiss: () -> Unit) {
             decorFitsSystemWindows  = false
         )
     ) {
-        Box(
+        BoxWithConstraints(
             Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.78f))
@@ -642,30 +552,25 @@ private fun PostExpandOverlay(post: VeilPost, onDismiss: () -> Unit) {
             Column(
                 Modifier
                     .fillMaxWidth(0.92f)
+                    .heightIn(max = maxHeight * 0.90f)
                     .clip(RoundedCornerShape(16.dp))
                     .background(PBg)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
                     ) { /* intercept — don't dismiss */ }
+                    .verticalScroll(rememberScrollState())
             ) {
                 // Image or text content
                 if (post.imageUrls.isNotEmpty()) {
-                    AsyncImage(
-                        model            = post.imageUrls.first(),
-                        contentDescription = null,
-                        contentScale     = ContentScale.FillWidth,
-                        modifier         = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                    )
+                    PostPhotoGallery(post.imageUrls)
                 } else {
                     // Full text display
                     Box(
                         Modifier
                             .fillMaxWidth()
                             .defaultMinSize(minHeight = 180.dp)
-                            .background(Color(0xFFF0F0FF))
+                            .background(PSurface)
                             .padding(24.dp),
                         contentAlignment = Alignment.Center
                     ) {

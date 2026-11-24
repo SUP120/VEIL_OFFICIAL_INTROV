@@ -1,6 +1,11 @@
 package com.ns.findyourintroverfriend.voiceroom
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -76,20 +81,22 @@ fun VoiceRoomActiveScreen(
     val veilIsDark = LocalVeilIsDark.current
     SideEffect { _waDark = veilIsDark }
 
-    // Connect LiveKit on first entry (skipped if PENDING_APPROVAL — wait for host approval)
-    LaunchedEffect(roomId) {
-        if (state.phase != RoomPhase.PENDING_APPROVAL) {
-            vm.connectToLiveKit(roomId, context)
-        }
+    LaunchedEffect(roomId, state.phase) {
+        if (state.phase == RoomPhase.CONNECTING) vm.connectToLiveKit(roomId, context)
     }
 
-    // When host approves a locked room, phase flips PENDING_APPROVAL → CONNECTING
-    var hasConnected by remember { mutableStateOf(false) }
-    LaunchedEffect(state.phase) {
-        if (state.phase == RoomPhase.CONNECTING && !hasConnected) {
-            hasConnected = true
-            vm.connectToLiveKit(roomId, context)
-        }
+    var micPermissionDenied by remember(roomId) { mutableStateOf(false) }
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        micPermissionDenied = !granted
+        if (granted && vm.activeState.value.isMuted) vm.toggleMic()
+    }
+    if (micPermissionDenied) {
+        AlertDialog(
+            onDismissRequest = { micPermissionDenied = false },
+            title = { Text("Microphone permission") },
+            text = { Text("You can keep listening. To speak, allow microphone access in Android settings.") },
+            confirmButton = { TextButton(onClick = { micPermissionDenied = false }) { Text("Keep listening") } }
+        )
     }
 
     BackHandler { vm.leaveRoom(isHost) }
@@ -105,7 +112,7 @@ fun VoiceRoomActiveScreen(
             roomExtCount  = state.room?.extensionCount ?: 0,
             isExtending   = state.isExtending,
             onExtend      = { vm.extendRoom(roomId) },
-            onDismiss     = { vm.dismissExtendDialog(); vm.leaveRoom(isHost) },
+            onDismiss     = { vm.dismissExtendDialog() },
         )
     }
 
@@ -156,7 +163,14 @@ fun VoiceRoomActiveScreen(
                     isHost       = isHost,
                     haptic       = haptic,
                     roomId       = roomId,
-                    onMute       = { vm.toggleMic() },
+                    onMute       = {
+                        if (!state.isMuted || ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
+                            == PackageManager.PERMISSION_GRANTED) {
+                            vm.toggleMic()
+                        } else {
+                            micPermission.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    },
                     onLeave      = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); vm.leaveRoom(isHost) },
                     onRaiseHand  = { if (state.hasRaisedHand) vm.lowerHand(roomId) else vm.raiseHand(roomId) },
                     onHostPanel  = { showHostPanel = true },
@@ -295,6 +309,20 @@ private fun WActiveContent(
         }
 
         Spacer(Modifier.height(16.dp))
+
+        var starterIndex by remember(roomId) { mutableIntStateOf(-1) }
+        val starters = listOf(
+            "What brought you into this room today?",
+            "What's something you could talk about for hours?",
+            "What's one recommendation you'd give everyone here?"
+        )
+        TextButton(onClick = { starterIndex = (starterIndex + 1) % starters.size }) {
+            Text(if (starterIndex < 0) "Conversation starter" else "Another starter")
+        }
+        if (starterIndex >= 0) {
+            Text(starters[starterIndex], color = WTextPrimary, fontSize = 14.sp,
+                textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp))
+        }
 
         // ── Join requests panel (host only) ──────────────────────────────────
         if (isHost && room.joinRequests.isNotEmpty()) {

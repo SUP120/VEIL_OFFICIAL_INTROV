@@ -1,9 +1,5 @@
 package com.ns.findyourintroverfriend.voiceroom
 
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -25,7 +21,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -33,7 +28,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.firebase.auth.FirebaseAuth
@@ -77,7 +71,6 @@ fun VoiceRoomLobbyScreen(
 ) {
     val state        by vm.lobbyState.collectAsStateWithLifecycle()
     val connectState by vm.connectState.collectAsStateWithLifecycle()
-    val context    = LocalContext.current
     val haptic     = LocalHapticFeedback.current
     val myUid      = remember { FirebaseAuth.getInstance().currentUser?.uid ?: "" }
 
@@ -94,17 +87,6 @@ fun VoiceRoomLobbyScreen(
             is VoiceConnectState.Failed -> { errorMsg = s.message; vm.resetConnectState() }
             else -> Unit
         }
-    }
-
-    var hasMicPermission by remember {
-        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)
-    }
-    val permLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        hasMicPermission = granted
-        if (!granted) errorMsg = "Microphone permission is required to use Whisper."
-    }
-    fun withMicPermission(action: () -> Unit) {
-        if (hasMicPermission) action() else permLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
 
     val isWorking  = connectState is VoiceConnectState.Working
@@ -164,7 +146,7 @@ fun VoiceRoomLobbyScreen(
                         .background(WAccent)
                         .clickable(enabled = !isWorking) {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            withMicPermission { showCreate = true }
+                            showCreate = true
                         }
                         .padding(horizontal = 14.dp, vertical = 9.dp),
                 ) {
@@ -197,7 +179,7 @@ fun VoiceRoomLobbyScreen(
                     }
                 }
                 state.rooms.isEmpty() -> {
-                    WEmptyState(onCreate = { withMicPermission { showCreate = true } })
+                    WEmptyState(onCreate = { showCreate = true })
                 }
                 else -> {
                     // Stats strip
@@ -217,7 +199,7 @@ fun VoiceRoomLobbyScreen(
                         if (totalPeople > 0) {
                             Text("·", color = WTextDisabled, fontSize = 11.sp)
                             Text(
-                                "$totalPeople ${if (totalPeople == 1) "person" else "people"} talking",
+                                "$totalPeople ${if (totalPeople == 1) "person" else "people"} in rooms",
                                 fontSize = 11.sp, color = WTextTertiary,
                             )
                         }
@@ -234,11 +216,11 @@ fun VoiceRoomLobbyScreen(
                                 isWorking = isWorking,
                                 onJoin    = {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    withMicPermission { vm.joinExistingRoom(room.roomId) }
+                                    vm.joinExistingRoom(room.roomId)
                                 },
                                 onRequest = {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    withMicPermission { vm.requestToJoin(room.roomId) }
+                                    vm.requestToJoin(room.roomId)
                                 },
                                 onEnter   = { onEnterRoom(room.roomId) },
                             )
@@ -291,16 +273,14 @@ fun VoiceRoomLobbyScreen(
             onDismiss = { showCreate = false },
             onCreate  = { topic, desc, lang, tags, maxP, locked ->
                 showCreate = false
-                withMicPermission {
-                    vm.createAndJoin(
-                        topic           = topic,
-                        description     = desc,
-                        language        = lang,
-                        tags            = tags,
-                        maxParticipants = maxP,
-                        isLocked        = locked,
-                    )
-                }
+                vm.createAndJoin(
+                    topic           = topic,
+                    description     = desc,
+                    language        = lang,
+                    tags            = tags,
+                    maxParticipants = maxP,
+                    isLocked        = locked,
+                )
             }
         )
     }
@@ -484,7 +464,7 @@ private fun WRoomCard(
                     alreadyIn -> WPill("Enter →", WAccentBg, WAccentText, border = WAccent.copy(0.3f), onClick = onEnter)
                     hasRequested -> WPill("Requested ⏳", WCardAlt, WTextTertiary)
                     canJoin && !room.isLocked -> WPill(
-                        text    = if (isWorking) "…" else "Join",
+                        text    = if (isWorking) "…" else "Listen",
                         bg      = WAccent,
                         textCol = Color.White,
                         onClick = onJoin,
@@ -633,6 +613,17 @@ private fun WCreateSheet(
                 fontWeight = FontWeight.Bold,
                 color      = WTextPrimary,
             )
+
+            Text("Quick topics", color = WTextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    "Catch up" to "What was the best part of your day?",
+                    "Music swap" to "Bring one song you would recommend.",
+                    "Quiet company" to "Drop in to listen or keep each other company."
+                ).forEach { (preset, starter) ->
+                    SuggestionChip(onClick = { topic = preset; description = starter }, label = { Text(preset) })
+                }
+            }
 
             // Topic
             OutlinedTextField(

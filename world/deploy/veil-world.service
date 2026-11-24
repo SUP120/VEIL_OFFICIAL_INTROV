@@ -1,0 +1,22 @@
+[Unit]
+Description=VEIL World
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+User=veil-world
+Group=veil-world
+StateDirectory=veil-world
+WorkingDirectory=/var/lib/veil-world
+Environment=HOME=/var/lib/veil-world
+EnvironmentFile=/etc/veil-world.env
+ExecStart=/opt/veil-world/godot --headless --main-pack /opt/veil-world/veil_world.pck -- --online-server
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

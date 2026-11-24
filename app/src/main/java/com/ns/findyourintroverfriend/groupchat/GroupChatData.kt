@@ -1,19 +1,27 @@
 package com.ns.findyourintroverfriend.groupchat
 
 import android.util.Log
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FieldPath
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.ns.findyourintroverfriend.notifications.VeilNotifier
+import com.ns.findyourintroverfriend.notifications.GroupPushRelay
+import com.ns.findyourintroverfriend.notifications.GroupPushNotification
 import com.ns.findyourintroverfriend.util.ContentModerator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.util.*
@@ -21,6 +29,7 @@ import java.util.*
 private const val TAG            = "GroupChat"
 private const val ROOMS_COL      = "group_rooms"
 private const val MESSAGES_COL   = "messages"
+private const val MESSAGE_PAGE   = 50L
 internal const val MONTHLY_LIMIT = 3
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -39,7 +48,9 @@ data class GroupRoom(
     val isSystem    : Boolean,
     val joinMode    : String,   // "auto" | "approve"
     val lastMsg     : String,
-    val lastMsgAt   : Timestamp?
+    val lastMsgAt   : Timestamp?,
+    val lastMsgUid  : String = "",
+    val announcement: String = ""
 )
 
 data class GroupMessage(
@@ -50,7 +61,8 @@ data class GroupMessage(
     val sentAt       : Timestamp,
     val replyToId    : String = "",
     val replyToAlias : String = "",
-    val replyToText  : String = ""
+    val replyToText  : String = "",
+    val reactions    : Map<String, String> = emptyMap()
 )
 
 data class GroupInviteUser(
@@ -74,6 +86,12 @@ class GroupRoomsViewModel : ViewModel() {
     // Room list state
     private val _rooms   = MutableStateFlow<List<GroupRoom>>(emptyList())
     val rooms: StateFlow<List<GroupRoom>> = _rooms.asStateFlow()
+    private val _joinedRooms = MutableStateFlow<List<GroupRoom>>(emptyList())
+    val joinedRooms = _joinedRooms.asStateFlow()
+    private val _preferences = MutableStateFlow<Map<String, GroupPreferences>>(emptyMap())
+    internal val preferences = _preferences.asStateFlow()
+    private val _roomsError = MutableStateFlow(false)
+    val roomsError = _roomsError.asStateFlow()
 
     private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
@@ -93,10 +111,12 @@ class GroupRoomsViewModel : ViewModel() {
     val myAlias: StateFlow<String> = _myAlias.asStateFlow()
 
     private var roomsListener: ListenerRegistration? = null
+    private var joinedListener: ListenerRegistration? = null
+    private var preferencesListener: ListenerRegistration? = null
 
     init {
         loadMyAlias()
-        listenRooms()
+        reloadRooms()
         loadMonthlyCount()
     }
 
@@ -109,36 +129,35 @@ class GroupRoomsViewModel : ViewModel() {
         }
     }
 
-    private fun listenRooms() {
+    fun reloadRooms() {
+        roomsListener?.remove()
+        joinedListener?.remove()
+        preferencesListener?.remove()
         _loading.value = true
+        _roomsError.value = false
+        val uid = myUid
+        if (uid.isBlank()) {
+            _roomsError.value = true
+            _loading.value = false
+            return
+        }
+        joinedListener = db.collection(ROOMS_COL).whereArrayContains("memberUids", uid)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) _roomsError.value = true
+                if (snapshot != null) _joinedRooms.value = snapshot.documents.mapNotNull { it.toGroupRoom() }
+            }
+        preferencesListener = db.groupPreferences(uid).addSnapshotListener { snapshot, _ ->
+            if (snapshot != null) _preferences.value = snapshot.documents.associate { it.id to it.groupPreferences() }
+        }
         roomsListener = db.collection(ROOMS_COL)
             .orderBy("memberCount", Query.Direction.DESCENDING)
             .limit(100)
             .addSnapshotListener { snap, err ->
                 if (err != null || snap == null) {
+                    _roomsError.value = true
                     _loading.value = false; return@addSnapshotListener
                 }
-                val list = snap.documents.mapNotNull { d ->
-                    try {
-                        @Suppress("UNCHECKED_CAST")
-                        GroupRoom(
-                            id          = d.id,
-                            name        = d.getString("name")        ?: return@mapNotNull null,
-                            description = d.getString("description") ?: "",
-                            createdBy   = d.getString("createdBy")   ?: "",
-                            createdAt   = d.getTimestamp("createdAt") ?: Timestamp.now(),
-                            memberCount = (d.getLong("memberCount") ?: 0L).toInt(),
-                            memberUids  = d.get("memberUids")  as? List<String> ?: emptyList(),
-                            pendingUids = d.get("pendingUids") as? List<String> ?: emptyList(),
-                            isSystem    = d.getBoolean("isSystem") ?: false,
-                            joinMode    = d.getString("joinMode") ?: "auto",
-                            lastMsg     = d.getString("lastMsg")  ?: "",
-                            lastMsgAt   = d.getTimestamp("lastMsgAt")
-                        )
-                    } catch (e: Exception) {
-                        Log.w(TAG, "parse room ${d.id}", e); null
-                    }
-                }
+                val list = snap.documents.mapNotNull { it.toGroupRoom() }
                 // Pin system room to top
                 _rooms.value = list.sortedWith(
                     compareByDescending<GroupRoom> { it.isSystem }
@@ -158,14 +177,13 @@ class GroupRoomsViewModel : ViewModel() {
                 val monthStart = Timestamp(cal.time)
                 val snap = db.collection(ROOMS_COL)
                     .whereEqualTo("createdBy", myUid)
-                    .whereGreaterThanOrEqualTo("createdAt", monthStart)
                     .get().await()
-                _monthlyUsed.value = snap.size()
+                _monthlyUsed.value = snap.documents.count { it.getTimestamp("createdAt")?.let { time -> time >= monthStart } == true }
             } catch (_: Exception) { }
         }
     }
 
-    fun createRoom(name: String, description: String, joinMode: String) {
+    fun createRoom(name: String, description: String, joinMode: String, onCreated: (String) -> Unit) {
         if (_creating.value) return
         val trimName = name.trim()
         if (trimName.isBlank()) { _createError.value = "Room name is required."; return }
@@ -190,8 +208,9 @@ class GroupRoomsViewModel : ViewModel() {
                     "lastMsg"     to "",
                     "lastMsgAt"   to null
                 )
-                db.collection(ROOMS_COL).add(data).await()
+                val room = db.collection(ROOMS_COL).add(data).await()
                 _monthlyUsed.value += 1
+                onCreated(room.id)
             } catch (e: Exception) {
                 Log.e(TAG, "createRoom", e)
                 _createError.value = "Failed to create room. Try again."
@@ -205,12 +224,7 @@ class GroupRoomsViewModel : ViewModel() {
     fun joinRoom(roomId: String) {
         viewModelScope.launch {
             try {
-                db.collection(ROOMS_COL).document(roomId).update(
-                    mapOf(
-                        "memberUids"  to FieldValue.arrayUnion(myUid),
-                        "memberCount" to FieldValue.increment(1)
-                    )
-                ).await()
+                db.changeGroupMembership(roomId, myUid, GroupMembership.Join)
             } catch (e: Exception) { Log.e(TAG, "joinRoom", e) }
         }
     }
@@ -219,23 +233,26 @@ class GroupRoomsViewModel : ViewModel() {
     fun requestJoin(roomId: String) {
         viewModelScope.launch {
             try {
-                db.collection(ROOMS_COL).document(roomId).update(
-                    "pendingUids", FieldValue.arrayUnion(myUid)
-                ).await()
+                db.changeGroupMembership(roomId, myUid, GroupMembership.Request)
             } catch (e: Exception) { Log.e(TAG, "requestJoin", e) }
         }
     }
 
     fun clearCreateError() { _createError.value = null }
 
-    override fun onCleared() { super.onCleared(); roomsListener?.remove() }
+    override fun onCleared() {
+        roomsListener?.remove()
+        joinedListener?.remove()
+        preferencesListener?.remove()
+        super.onCleared()
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  GroupChatRoomViewModel  — single room: messages, send, moderation, invite
 // ─────────────────────────────────────────────────────────────────────────────
 
-class GroupChatRoomViewModel : ViewModel() {
+class GroupChatRoomViewModel(application: Application) : AndroidViewModel(application) {
 
     private val auth = FirebaseAuth.getInstance()
     private val db   = FirebaseFirestore.getInstance()
@@ -256,6 +273,18 @@ class GroupChatRoomViewModel : ViewModel() {
     // Send state
     private val _sending = MutableStateFlow(false)
     val sending: StateFlow<Boolean> = _sending.asStateFlow()
+    private val _actionError = MutableStateFlow<String?>(null)
+    val actionError = _actionError.asStateFlow()
+    private val _roomError = MutableStateFlow(false)
+    val roomError = _roomError.asStateFlow()
+    private val _messageError = MutableStateFlow(false)
+    val messageError = _messageError.asStateFlow()
+    private val _hasOlder = MutableStateFlow(false)
+    val hasOlder = _hasOlder.asStateFlow()
+    private val _loadingOlder = MutableStateFlow(false)
+    val loadingOlder = _loadingOlder.asStateFlow()
+    private val _preferences = MutableStateFlow(GroupPreferences())
+    internal val preferences = _preferences.asStateFlow()
 
     // My alias
     private val _myAlias = MutableStateFlow("")
@@ -280,16 +309,31 @@ class GroupChatRoomViewModel : ViewModel() {
 
     private var roomListener: ListenerRegistration? = null
     private var msgListener : ListenerRegistration? = null
+    private var preferenceListener: ListenerRegistration? = null
+    private var oldestMessage: DocumentSnapshot? = null
+    private var lastMarkedRead: Timestamp? = null
+    private var requestedRead: Timestamp? = null
+    private var lastReadWriting = false
     private var currentRoomId = ""
 
     fun init(roomId: String) {
         if (currentRoomId == roomId) return
         currentRoomId = roomId
-        roomListener?.remove()
-        msgListener?.remove()
         loadMyAlias()
-        listenRoom(roomId)
-        listenMessages(roomId)
+        reloadRoom()
+        if (myUid.isNotBlank()) {
+            preferenceListener?.remove()
+            preferenceListener = db.groupPreferences(myUid).document(roomId).addSnapshotListener { snapshot, _ ->
+                if (snapshot != null) _preferences.value = snapshot.groupPreferences()
+            }
+        }
+    }
+
+    fun reloadRoom() {
+        if (currentRoomId.isBlank()) return
+        roomListener?.remove()
+        _roomError.value = false
+        listenRoom(currentRoomId)
     }
 
     private fun loadMyAlias() {
@@ -303,27 +347,28 @@ class GroupChatRoomViewModel : ViewModel() {
 
     private fun listenRoom(roomId: String) {
         roomListener = db.collection(ROOMS_COL).document(roomId)
-            .addSnapshotListener { d, _ ->
-                if (d == null || !d.exists()) return@addSnapshotListener
-                @Suppress("UNCHECKED_CAST")
-                val r = GroupRoom(
-                    id          = d.id,
-                    name        = d.getString("name")        ?: "",
-                    description = d.getString("description") ?: "",
-                    createdBy   = d.getString("createdBy")   ?: "",
-                    createdAt   = d.getTimestamp("createdAt") ?: Timestamp.now(),
-                    memberCount = (d.getLong("memberCount") ?: 0L).toInt(),
-                    memberUids  = d.get("memberUids")  as? List<String> ?: emptyList(),
-                    pendingUids = d.get("pendingUids") as? List<String> ?: emptyList(),
-                    isSystem    = d.getBoolean("isSystem") ?: false,
-                    joinMode    = d.getString("joinMode") ?: "auto",
-                    lastMsg     = d.getString("lastMsg")  ?: "",
-                    lastMsgAt   = d.getTimestamp("lastMsgAt")
-                )
+            .addSnapshotListener { d, error ->
+                if (error != null || d == null || (!d.exists() && !d.metadata.isFromCache)) {
+                    _roomError.value = true
+                    return@addSnapshotListener
+                }
+                val r = d.toGroupRoom() ?: return@addSnapshotListener
+                _roomError.value = false
                 _room.value = r
+                if (myUid in r.memberUids) {
+                    if (msgListener == null) listenMessages(roomId)
+                } else {
+                    msgListener?.remove()
+                    msgListener = null
+                    oldestMessage = null
+                    _messages.value = emptyList()
+                    _hasOlder.value = false
+                }
                 // Load pending user aliases if creator
                 if (r.createdBy == myUid && r.pendingUids.isNotEmpty()) {
-                    loadPendingAliases(r.pendingUids)
+                    if (_pendingUsers.value.map { it.first } != r.pendingUids) loadPendingAliases(r.pendingUids)
+                } else {
+                    _pendingUsers.value = emptyList()
                 }
             }
     }
@@ -340,178 +385,225 @@ class GroupChatRoomViewModel : ViewModel() {
         }
     }
 
-    private fun listenMessages(roomId: String) {
-        _msgLoading.value = true
-        msgListener = db.collection(ROOMS_COL).document(roomId)
-            .collection(MESSAGES_COL)
-            .orderBy("sentAt", Query.Direction.ASCENDING)
-            .addSnapshotListener { snap, err ->
-                if (err != null || snap == null) {
-                    _msgLoading.value = false; return@addSnapshotListener
-                }
-                viewModelScope.launch {
-                    val msgs = snap.documents.mapNotNull { d ->
-                        try {
-                            val uid = d.getString("uid") ?: return@mapNotNull null
-                            GroupMessage(
-                                id           = d.id,
-                                uid          = uid,
-                                alias        = d.getString("alias")        ?: "Someone",
-                                text         = d.getString("text")         ?: "",
-                                sentAt       = d.getTimestamp("sentAt")    ?: Timestamp.now(),
-                                replyToId    = d.getString("replyToId")    ?: "",
-                                replyToAlias = d.getString("replyToAlias") ?: "",
-                                replyToText  = d.getString("replyToText")  ?: ""
-                            )
-                        } catch (_: Exception) { null }
-                    }
-                    _messages.value = msgs
-                    _msgLoading.value = false
-
-                    // ── Lazy-fetch profiles for senders not yet cached ──────────
-                    val cached = _userProfiles.value
-                    val newUids = msgs.map { it.uid }.distinct().filter { it !in cached }
-                    if (newUids.isNotEmpty()) {
-                        val updates = cached.toMutableMap()
-                        for (uid in newUids) {
-                            // Seed with alias from message immediately
-                            val seedAlias = msgs.lastOrNull { it.uid == uid }?.alias ?: "Someone"
-                            updates[uid] = seedAlias to ""
-                        }
-                        _userProfiles.value = updates
-                        // Now fetch real photoUrl in background
-                        for (uid in newUids) {
-                            try {
-                                val doc = db.collection("users").document(uid).get().await()
-                                val alias    = doc.getString("alias")    ?: updates[uid]?.first ?: "Someone"
-                                val photoUrl = doc.getString("photoUrl") ?: ""
-                                _userProfiles.value = _userProfiles.value.toMutableMap().also {
-                                    it[uid] = alias to photoUrl
-                                }
-                            } catch (_: Exception) { }
-                        }
-                    }
-                }
-            }
+    fun retryMessages() {
+        if (myUid in (_room.value?.memberUids ?: emptyList())) listenMessages(currentRoomId)
     }
 
-    fun send(
-        text         : String,
-        replyToId    : String = "",
-        replyToAlias : String = "",
-        replyToText  : String = ""
-    ) {
-        val t = text.trim()
-        if (t.isBlank() || _sending.value) return
-        val roomId = currentRoomId
-        val alias  = _myAlias.value
-        _sending.value = true
+    private fun messageQuery(roomId: String) = db.collection(ROOMS_COL).document(roomId)
+        .collection(MESSAGES_COL).orderBy("sentAt", Query.Direction.DESCENDING)
+
+    private fun listenMessages(roomId: String) {
+        msgListener?.remove()
+        _msgLoading.value = _messages.value.isEmpty()
+        _messageError.value = false
+        msgListener = messageQuery(roomId).limit(MESSAGE_PAGE).addSnapshotListener { snapshot, error ->
+            _msgLoading.value = false
+            if (error != null || snapshot == null) {
+                _messageError.value = true
+                return@addSnapshotListener
+            }
+            if (oldestMessage == null) {
+                oldestMessage = snapshot.documents.lastOrNull()
+                _hasOlder.value = snapshot.size().toLong() == MESSAGE_PAGE
+            }
+            mergeMessages(snapshot.documents.mapNotNull { it.toGroupMessage() })
+        }
+    }
+
+    fun loadEarlier() {
+        val oldest = oldestMessage ?: return
+        if (_loadingOlder.value) return
+        _loadingOlder.value = true
         viewModelScope.launch {
             try {
-                val safe = ContentModerator.maskPhoneNumbers(t)
-                val mod  = ContentModerator.check(safe)
-                if (!mod.isSafe) { _sending.value = false; return@launch }
-                val data = mutableMapOf<String, Any>(
-                    "uid"    to myUid,
-                    "alias"  to alias,
-                    "text"   to safe,
-                    "sentAt" to Timestamp.now()
-                )
-                if (replyToId.isNotBlank()) {
-                    data["replyToId"]    = replyToId
-                    data["replyToAlias"] = replyToAlias
-                    data["replyToText"]  = replyToText.take(120)
+                val snapshot = messageQuery(currentRoomId).startAfter(oldest).limit(MESSAGE_PAGE).get().await()
+                oldestMessage = snapshot.documents.lastOrNull() ?: oldest
+                _hasOlder.value = snapshot.size().toLong() == MESSAGE_PAGE
+                mergeMessages(snapshot.documents.mapNotNull { it.toGroupMessage() })
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                _actionError.value = "Couldn't load older messages. Try again."
+            } finally {
+                _loadingOlder.value = false
+            }
+        }
+    }
+
+    private fun mergeMessages(incoming: List<GroupMessage>) {
+        _messages.update { old ->
+            (old + incoming).associateBy { it.id }.values
+                .sortedWith(compareBy<GroupMessage> { it.sentAt }.thenBy { it.id })
+        }
+        val newSenders = incoming.associate { it.uid to it.alias }.filterKeys { it !in _userProfiles.value }
+        if (newSenders.isEmpty()) return
+        _userProfiles.update { profiles -> profiles + newSenders.mapValues { (_, alias) -> alias to "" } }
+        viewModelScope.launch {
+            for ((uid, alias) in newSenders) {
+                try {
+                    val account = db.collection("users").document(uid).get().await()
+                    val profile = (account.getString("alias") ?: alias) to account.getString("photoUrl").orEmpty()
+                    _userProfiles.update { it + (uid to profile) }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    // Keep using the alias stored on the message.
                 }
-                db.collection(ROOMS_COL).document(roomId)
-                    .collection(MESSAGES_COL).add(data).await()
-                db.collection(ROOMS_COL).document(roomId).update(
-                    mapOf(
-                        "lastMsg"   to safe.take(60),
-                        "lastMsgAt" to Timestamp.now()
-                    )
-                ).await()
-            } catch (e: Exception) {
-                Log.e(TAG, "send", e)
+            }
+        }
+    }
+
+    internal fun send(text: String, replyToId: String?, onSent: () -> Unit) {
+        if (text.isBlank() || _sending.value) return
+        val room = currentRoomId
+        val uid = myUid
+        val messageId = UUID.randomUUID().toString()
+        _sending.value = true
+        _actionError.value = null
+        viewModelScope.launch {
+            try {
+                GroupChatMessages.send(room, uid, messageId, text, replyToId)
+                runCatching { GroupPushRelay.enqueue(getApplication(), uid, room, messageId) }
+                    .onFailure { Log.w(TAG, "Couldn't queue group push", it) }
+                onSent()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: IllegalArgumentException) {
+                _actionError.value = error.message ?: "Check your message and try again."
+            } catch (_: Exception) {
+                _actionError.value = "Couldn't send your message. Check your connection and group membership."
             } finally {
                 _sending.value = false
             }
         }
     }
 
-    // ── Room creator controls ───────────────────────────────────────────────
+    fun clearActionError() { _actionError.value = null }
 
-    fun approveJoin(uid: String) {
-        val roomId = currentRoomId
+    fun markRead(at: Timestamp) {
+        val uid = myUid
+        val previous = maxOf(lastMarkedRead ?: Timestamp(0, 0), _preferences.value.lastReadAt ?: Timestamp(0, 0))
+        if (uid.isBlank() || at <= previous) return
+        if (lastReadWriting) {
+            requestedRead = maxOf(requestedRead ?: at, at)
+            return
+        }
+        lastReadWriting = true
+        val reference = db.groupPreferences(uid).document(currentRoomId)
         viewModelScope.launch {
             try {
-                db.collection(ROOMS_COL).document(roomId).update(
-                    mapOf(
-                        "pendingUids" to FieldValue.arrayRemove(uid),
-                        "memberUids"  to FieldValue.arrayUnion(uid),
-                        "memberCount" to FieldValue.increment(1)
-                    )
-                ).await()
-            } catch (e: Exception) { Log.e(TAG, "approveJoin", e) }
+                db.runTransaction { transaction ->
+                    val existing = transaction.get(reference).getTimestamp("lastReadAt")
+                    if (existing == null || at > existing) {
+                        transaction.set(reference, mapOf("lastReadAt" to at), com.google.firebase.firestore.SetOptions.merge())
+                    }
+                }.await()
+                lastMarkedRead = at
+                GroupPushNotification.cancel(getApplication(), uid, currentRoomId)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                // Keep the group unread when Firestore cannot confirm the change.
+            } finally {
+                lastReadWriting = false
+                val next = requestedRead
+                requestedRead = null
+                if (next != null && next > at) markRead(next)
+            }
         }
     }
 
-    fun denyJoin(uid: String) {
-        val roomId = currentRoomId
-        viewModelScope.launch {
-            try {
-                db.collection(ROOMS_COL).document(roomId).update(
-                    "pendingUids", FieldValue.arrayRemove(uid)
-                ).await()
-            } catch (e: Exception) { Log.e(TAG, "denyJoin", e) }
+    fun setNotificationMode(mode: String) =
+        updatePreference("notificationMode", mode)
+
+    fun setGroupPinned(pinned: Boolean) =
+        updatePreference("pinned", pinned)
+
+    private fun updatePreference(field: String, value: Any) {
+        runGroupAction("Couldn't save your group settings.") {
+            db.groupPreferences(myUid).document(currentRoomId)
+                .set(mapOf(field to value), com.google.firebase.firestore.SetOptions.merge()).await()
+            if (value == "muted") GroupPushNotification.cancel(getApplication(), myUid, currentRoomId)
         }
     }
 
-    fun removeMember(uid: String) {
-        val roomId = currentRoomId
-        viewModelScope.launch {
-            try {
-                db.collection(ROOMS_COL).document(roomId).update(
-                    mapOf(
-                        "memberUids"  to FieldValue.arrayRemove(uid),
-                        "memberCount" to FieldValue.increment(-1)
-                    )
-                ).await()
-            } catch (e: Exception) { Log.e(TAG, "removeMember", e) }
+    fun react(message: GroupMessage, reaction: String) {
+        if (reaction !in groupReactions || myUid.isBlank()) return
+        val uid = myUid
+        val reference = db.collection(ROOMS_COL).document(currentRoomId).collection(MESSAGES_COL).document(message.id)
+        runGroupAction("Couldn't save your reaction.") {
+            val value = db.runTransaction { transaction ->
+                val existing = transaction.get(reference).toGroupMessage()
+                check(existing != null) { "This message is unavailable." }
+                val selected = reaction.takeUnless { it == existing.reactions[uid] }
+                transaction.update(reference, FieldPath.of("reactions", uid), selected ?: FieldValue.delete())
+                selected
+            }.await()
+            _messages.update { messages ->
+                messages.map {
+                    if (it.id != message.id) it
+                    else it.copy(reactions = if (value == null) it.reactions - uid else it.reactions + (uid to value))
+                }
+            }
+        }
+    }
+
+    fun saveAnnouncement(text: String, onSaved: () -> Unit) {
+        runGroupAction("Couldn't update the announcement.") {
+            val clean = ContentModerator.maskPhoneNumbers(text.trim())
+            require(clean.length <= 280 && (clean.isEmpty() || ContentModerator.check(clean).isSafe)) {
+                "Use up to 280 characters and follow VEIL's community guidelines."
+            }
+            db.collection(ROOMS_COL).document(currentRoomId).update("announcement", clean).await()
+            onSaved()
+        }
+    }
+
+    fun approveJoin(uid: String) = changeMembership(GroupMembership.Approve, uid)
+
+    fun denyJoin(uid: String) = changeMembership(GroupMembership.Deny, uid)
+
+    fun removeMember(uid: String) = changeMembership(GroupMembership.Remove, uid)
+
+    fun joinRoom(roomId: String) {
+        if (roomId == currentRoomId) changeMembership(GroupMembership.Join)
+    }
+
+    fun requestJoin(roomId: String) {
+        if (roomId == currentRoomId) changeMembership(GroupMembership.Request)
+    }
+
+    fun cancelJoinRequest() = changeMembership(GroupMembership.CancelRequest)
+
+    fun leaveGroup(onLeft: () -> Unit) = changeMembership(GroupMembership.Leave, onDone = onLeft)
+
+    private fun changeMembership(action: GroupMembership, target: String = myUid, onDone: () -> Unit = {}) {
+        runGroupAction("Couldn't update your group membership. Try again.") {
+            db.changeGroupMembership(currentRoomId, myUid, action, target)
+            if (action == GroupMembership.Leave) GroupPushNotification.cancel(getApplication(), myUid, currentRoomId)
+            onDone()
         }
     }
 
     fun deleteRoom(onDeleted: () -> Unit) {
-        val roomId = currentRoomId
-        viewModelScope.launch {
-            try {
-                db.collection(ROOMS_COL).document(roomId).delete().await()
-                onDeleted()
-            } catch (e: Exception) { Log.e(TAG, "deleteRoom", e) }
+        runGroupAction("Couldn't delete the group.") {
+            db.collection(ROOMS_COL).document(currentRoomId).delete().await()
+            onDeleted()
         }
     }
 
-    /** Auto-join a room (joinMode = "auto"). */
-    fun joinRoom(roomId: String) {
+    private fun runGroupAction(failureMessage: String, action: suspend () -> Unit) {
+        _actionError.value = null
         viewModelScope.launch {
             try {
-                db.collection(ROOMS_COL).document(roomId).update(
-                    mapOf(
-                        "memberUids"  to FieldValue.arrayUnion(myUid),
-                        "memberCount" to FieldValue.increment(1)
-                    )
-                ).await()
-            } catch (e: Exception) { Log.e(TAG, "joinRoom", e) }
-        }
-    }
-
-    /** Request to join a room (joinMode = "approve"). */
-    fun requestJoin(roomId: String) {
-        viewModelScope.launch {
-            try {
-                db.collection(ROOMS_COL).document(roomId).update(
-                    "pendingUids", FieldValue.arrayUnion(myUid)
-                ).await()
-            } catch (e: Exception) { Log.e(TAG, "requestJoin", e) }
+                action()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: IllegalArgumentException) {
+                _actionError.value = error.message ?: failureMessage
+            } catch (_: Exception) {
+                _actionError.value = failureMessage
+            }
         }
     }
 
@@ -640,5 +732,6 @@ class GroupChatRoomViewModel : ViewModel() {
         super.onCleared()
         roomListener?.remove()
         msgListener?.remove()
+        preferenceListener?.remove()
     }
 }

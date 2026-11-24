@@ -1,179 +1,192 @@
 package com.ns.findyourintroverfriend.aifriend
 
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.*
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowBack
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.ns.findyourintroverfriend.ui.theme.currentProfilePalette
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  VEIL Friends — Home Screen
-//  Discover and choose an AI friend personality.
-// ─────────────────────────────────────────────────────────────────────────────
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VeilFriendsScreen(
-    onBack       : () -> Unit,
-    onOpenFriend : (friendId: String) -> Unit,
-) {
-    val friends = VeilFriends.all
-
-    Surface(color = Color.Black, modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
-
-            // ── Top bar ───────────────────────────────────────────────────
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        imageVector        = Icons.Rounded.ArrowBack,
-                        contentDescription = "Back",
-                        tint               = Color.White,
-                        modifier           = Modifier.size(22.dp)
-                    )
-                }
-                Spacer(Modifier.width(12.dp))
-                Column {
-                    Text(
-                        "VEIL Friends",
-                        fontSize   = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color      = Color.White,
-                        letterSpacing = 1.sp
-                    )
-                    Text(
-                        "Someone to talk to, whenever you need.",
-                        fontSize = 12.sp,
-                        color    = Color.White.copy(alpha = 0.5f)
-                    )
-                }
+fun VeilFriendsLockedScreen(onBack: () -> Unit) {
+    val colors = currentProfilePalette
+    Scaffold(
+        containerColor = colors.background,
+        topBar = {
+            AiTopBar(onBack) {
+                Text("VEIL Friends AI", color = colors.text, style = MaterialTheme.typography.titleLarge)
             }
-
-            // ── Friend cards ──────────────────────────────────────────────
-            LazyColumn(
-                contentPadding        = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement   = Arrangement.spacedBy(12.dp),
-                modifier              = Modifier.fillMaxSize()
+        }
+    ) { padding ->
+        Box(Modifier.fillMaxSize().padding(padding).padding(24.dp), contentAlignment = Alignment.Center) {
+            Surface(
+                color = colors.card,
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, colors.border)
             ) {
-                items(friends, key = { it.id }) { friend ->
-                    FriendCard(
-                        friend   = friend,
-                        onClick  = { onOpenFriend(friend.id) }
-                    )
+                Column(
+                    Modifier.fillMaxWidth().padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(Icons.Default.Lock, contentDescription = null, tint = colors.accent)
+                    Text("AI chats are on hold", color = colors.text, style = MaterialTheme.typography.headlineSmall)
+                    Text("Check back in a future VEIL update.", color = colors.secondaryText)
                 }
-                item { Spacer(Modifier.height(24.dp)) }
             }
         }
     }
 }
 
 @Composable
-private fun FriendCard(
-    friend  : AiFriend,
-    onClick : () -> Unit,
-) {
-    var pressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        targetValue   = if (pressed) 0.97f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessHigh),
-        label         = "scale"
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(Color(0xFF1A1A1A), Color(0xFF111111))
-                )
-            )
-            .border(
-                width = 0.5.dp,
-                color = Color.White.copy(alpha = 0.08f),
-                shape = RoundedCornerShape(20.dp)
-            )
-            .clickable { onClick() }
-            .padding(20.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // Emoji avatar
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.06f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(friend.emoji, fontSize = 26.sp)
+fun VeilFriendsScreen(onBack: () -> Unit, onOpenFriend: (String) -> Unit) {
+    val colors = currentProfilePalette
+    Scaffold(
+        containerColor = colors.background,
+        topBar = {
+            AiTopBar(onBack = onBack) {
+                Text("VEIL Friends AI", style = MaterialTheme.typography.titleLarge, color = colors.text)
             }
-
-            Spacer(Modifier.width(16.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        friend.name,
-                        fontSize   = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color      = Color.White
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    // AI badge
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color.White.copy(alpha = 0.1f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(
+                start = 20.dp, end = 20.dp, top = 16.dp, bottom = 24.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                Surface(
+                    color = colors.tintedSurface,
+                    shape = RoundedCornerShape(24.dp),
+                    border = BorderStroke(1.dp, colors.border)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("AI Friend", fontSize = 9.sp, color = Color.White.copy(alpha = 0.5f))
+                        Text(
+                            "Find someone to talk to",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = colors.text
+                        )
+                        Text(
+                            "Choose an AI friend for a quiet check-in, a laugh, or a little practice before a real conversation.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.secondaryText
+                        )
+                        Text(
+                            "20 free replies per account · 1 cookie per reply after that",
+                            modifier = Modifier.padding(top = 4.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = colors.accent
+                        )
                     }
                 }
-                Text(
-                    friend.tagline,
-                    fontSize = 12.sp,
-                    color    = Color.White.copy(alpha = 0.45f)
-                )
-                Spacer(Modifier.height(10.dp))
-                // Personality tags
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    friend.personalityTags.take(3).forEach { tag ->
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color.White.copy(alpha = 0.07f))
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
-                        ) {
-                            Text(tag, fontSize = 10.sp, color = Color.White.copy(alpha = 0.6f))
+            }
+            items(VeilFriends.all, key = { it.id }) { friend ->
+                Surface(
+                    onClick = { onOpenFriend(friend.id) },
+                    color = colors.card,
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, colors.border),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        AiPortrait(friend, 60.dp)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(
+                                friend.name,
+                                color = colors.text,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(friend.style, color = colors.accent, style = MaterialTheme.typography.labelMedium)
+                            Text(
+                                friend.description,
+                                color = colors.secondaryText,
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
+                        Icon(
+                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = colors.secondaryText
+                        )
                     }
                 }
             }
         }
+    }
+}
 
-        // Description — bottom
-        Spacer(Modifier.height(0.dp))
+@Composable
+internal fun AiPortrait(friend: AiFriend, size: Dp) {
+    val colors = currentProfilePalette
+    Box(Modifier.size(size).clip(CircleShape).background(colors.tintedSurface)) {
+        Image(
+            painter = painterResource(friend.portrait),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
+    }
+}
+
+@Composable
+internal fun AiTopBar(
+    onBack: () -> Unit,
+    actions: @Composable () -> Unit = {},
+    title: @Composable () -> Unit
+) {
+    val colors = currentProfilePalette
+    Surface(color = colors.card) {
+        Row(
+            modifier = Modifier.fillMaxWidth().statusBarsPadding().heightIn(min = 64.dp)
+                .padding(start = 4.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = colors.text)
+            }
+            Box(Modifier.weight(1f).padding(vertical = 8.dp)) { title() }
+            actions()
+        }
     }
 }

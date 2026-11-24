@@ -40,7 +40,7 @@ class VeilMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         super.onNewToken(token)
-        Log.d(TAG, "FCM token refreshed: ${token.take(20)}…")
+        Log.d(TAG, "FCM token refreshed")
         saveTokenToFirestore(token)
     }
 
@@ -68,6 +68,13 @@ class VeilMessagingService : FirebaseMessagingService() {
                 senderUid    = fromUid,
                 messageText  = body
             )
+            return
+        }
+
+        if (type == "group_chat_message") {
+            val roomId = message.data["roomId"] ?: return
+            if (isAppInForeground() && ActiveChatTracker.activeGroupRoomId == roomId) return
+            GroupPushNotification.showIncoming(this, message.data)
             return
         }
 
@@ -326,6 +333,7 @@ class VeilMessagingService : FirebaseMessagingService() {
     private fun saveTokenToFirestore(token: String) {
         val uid = FirebaseAuth.getInstance().currentUser?.uid
         if (uid != null) {
+            saveGroupPushDevice(uid, token)
             FirebaseFirestore.getInstance()
                 .collection("users").document(uid)
                 .update(
@@ -360,7 +368,27 @@ class VeilMessagingService : FirebaseMessagingService() {
         const val EXTRA_OPEN_DM           = "open_dm"
         const val EXTRA_MATCH_ID          = "match_id"
         const val EXTRA_OPEN_VOICE_ROOM   = "open_voice_room"
+        const val EXTRA_GROUP_CHAT_ROOM = "group_chat_room"
+        const val EXTRA_GROUP_CHAT_RECIPIENT = "group_chat_recipient"
+
+        fun registerCurrentToken(uid: String) {
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+                if (FirebaseAuth.getInstance().currentUser?.uid != uid || token.isBlank()) return@addOnSuccessListener
+                saveGroupPushDevice(uid, token)
+                com.google.firebase.firestore.FirebaseFirestore.getInstance().collection("users").document(uid).set(
+                    mapOf("fcmToken" to token, "fcmTokenUpdatedAt" to com.google.firebase.Timestamp.now()),
+                    com.google.firebase.firestore.SetOptions.merge()
+                )
+            }
+        }
+
         const val EXTRA_ROOM_ID           = "room_id"
+
+        private fun saveGroupPushDevice(uid: String, token: String) {
+            FirebaseFirestore.getInstance().collection("group_push_devices").document(uid).set(
+                mapOf("token" to token, "updatedAt" to com.google.firebase.firestore.FieldValue.serverTimestamp())
+            ).addOnFailureListener { Log.w(TAG, "Couldn't register group notifications", it) }
+        }
 
         fun flushPendingTokenIfNeeded(context: Context, uid: String) {
             val prefs = context.getSharedPreferences("veil_prefs", Context.MODE_PRIVATE)

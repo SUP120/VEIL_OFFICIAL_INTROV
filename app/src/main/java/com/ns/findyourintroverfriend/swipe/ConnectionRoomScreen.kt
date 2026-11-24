@@ -7,29 +7,46 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.airbnb.lottie.compose.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.MetadataChanges
+import com.google.firebase.firestore.Query
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -37,17 +54,25 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import com.ns.findyourintroverfriend.R
 import com.ns.findyourintroverfriend.billing.CookieViewModel
+import com.ns.findyourintroverfriend.report.BlockUserDialog
+import com.ns.findyourintroverfriend.report.SafetyForm
+import com.ns.findyourintroverfriend.report.SafetyTarget
+import com.ns.findyourintroverfriend.report.contactAvailability
+import com.ns.findyourintroverfriend.util.LocalVeilIsDark
 import com.ns.findyourintroverfriend.util.VeilSafetyUtil
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
- import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.ns.findyourintroverfriend.BuildConfig
@@ -55,24 +80,62 @@ import com.ns.findyourintroverfriend.util.CloudinaryUploader
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.items
+import kotlin.math.roundToInt
 
-// ── Chat palette — dark-aware (resolved at composition time via _chatDark) ──
-// Light values stay the same as before; dark values mirror the app's dark theme.
-private var _chatDark by androidx.compose.runtime.mutableStateOf(false)
+private val chatDark: Boolean
+    @Composable get() = LocalVeilIsDark.current
 
-// These read _chatDark at every recompose — no snapshot issues.
-private val IGBg        get() = if (_chatDark) Color(0xFF0D0D10) else Color(0xFFFFFFFF)
-private val IGSurface   get() = if (_chatDark) Color(0xFF141417) else Color(0xFFFFFFFF)
-private val IGDivider   get() = if (_chatDark) Color(0xFF2A2A30) else Color(0xFFEFEFEF)
-private val IGSentBg    get() = if (_chatDark) Color(0xFFE91E8C) else Color(0xFF000000)
-private val IGSentText  get() = Color(0xFFFFFFFF)
-private val IGRecvBg    get() = if (_chatDark) Color(0xFF1E1E24) else Color(0xFFF0F0F0)
-private val IGRecvText  get() = if (_chatDark) Color(0xFFE8E8EC) else Color(0xFF111111)
-private val IGPrimary   get() = if (_chatDark) Color(0xFFF0F0F5) else Color(0xFF000000)
-private val IGSecondary get() = if (_chatDark) Color(0xFF8A8A9A) else Color(0xFF737373)
-private val IGRed       = Color(0xFFED4956)
-private val IGRedSoft   get() = if (_chatDark) Color(0xFF2A1010) else Color(0xFFFFF0F1)
-private val IGFieldBg   get() = if (_chatDark) Color(0xFF1A1A20) else Color(0xFFF9F9F9)
+private val IGBg: Color
+    @Composable get() = if (chatDark) Color(0xFF101015) else Color(0xFFFAF7F3)
+private val IGSurface: Color
+    @Composable get() = if (chatDark) Color(0xFF18181F) else Color(0xFFFFFFFF)
+private val IGDivider: Color
+    @Composable get() = if (chatDark) Color(0xFF2E2B33) else Color(0xFFE8DFD9)
+private val IGSentBg: Color
+    @Composable get() = if (chatDark) Color(0xFF483441) else Color(0xFFEDE0E6)
+private val IGSentText: Color
+    @Composable get() = if (chatDark) Color(0xFFF2E8ED) else Color(0xFF3D2935)
+private val IGRecvBg: Color
+    @Composable get() = if (chatDark) Color(0xFF24232B) else Color(0xFFFFFFFF)
+private val IGRecvText: Color
+    @Composable get() = if (chatDark) Color(0xFFE8E5E9) else Color(0xFF2C2825)
+private val IGPrimary: Color
+    @Composable get() = if (chatDark) Color(0xFFE9E4E5) else Color(0xFF302A2C)
+private val IGSecondary: Color
+    @Composable get() = if (chatDark) Color(0xFFA9A2AA) else Color(0xFF756B6C)
+private val IGRed       = Color(0xFFB76D73)
+private val IGFieldBg: Color
+    @Composable get() = if (chatDark) Color(0xFF232229) else Color(0xFFF6F1ED)
+private val IGChatAccent: Color
+    @Composable get() = if (chatDark) Color(0xFFB593A8) else Color(0xFF765369)
+private val IGOnline = Color(0xFF789286)
+private val ChatControlBackground = Color(0xFF282329)
+private val ChatControlForeground = Color(0xFFFFF7F3)
+private val ChatControlBorder = Color(0xFF544952)
+
+private data class OutgoingText(val message: SwipeMessage, val failed: Boolean = false)
+
+private val SwipeMessage.chatKey: String get() = firestoreId.ifBlank { messageId }
+
+private fun SwipeMessage.localDay(zone: java.time.ZoneId): java.time.LocalDate =
+    java.time.Instant.ofEpochMilli(sentAt).atZone(zone).toLocalDate()
+
+private fun SwipeMessage.mediaLabel(): String? = when {
+    imageUrl.isNotBlank() -> "Photo"
+    text.startsWith("voice_note::") -> "Voice note"
+    text.startsWith("drawing::") -> "Drawing"
+    text.startsWith("gift_cookies_") -> "Cookie gift"
+    text == "flower_burst" || text.startsWith("flower_burst::") -> "Flowers"
+    text.startsWith("game_invite_draw_guess::") -> "Game invitation"
+    text.startsWith("whisper_invite::") -> "Whisper invitation"
+    text.startsWith("sticker_pack") -> "Sticker"
+    else -> null
+}
+
+private fun SwipeMessage.displayText(): String =
+    if (firestoreId != messageId && text.startsWith("@")) text.substringAfter('\n', text) else text
+
+private fun SwipeMessage.preview(): String = mediaLabel() ?: displayText().replace('\n', ' ')
 
 @Composable
 fun ConnectionRoomScreen(
@@ -83,29 +146,53 @@ fun ConnectionRoomScreen(
     onNavigateDrawGuess: (roomId: String) -> Unit = {},
     onNavigateVoiceRoom: (roomId: String) -> Unit = {}
 ) {
-    val db      = FirebaseFirestore.getInstance()
+    val db      = remember { FirebaseFirestore.getInstance() }
     val uid     = FirebaseAuth.getInstance().currentUser?.uid ?: ""
     val scope   = rememberCoroutineScope()
     val context = LocalContext.current
     val hapticB = LocalHapticFeedback.current
 
     // ── Dark mode ──────────────────────────────────────────────────────────────
-    val veilDark = com.ns.findyourintroverfriend.util.LocalVeilIsDark.current
-    SideEffect { _chatDark = veilDark }
+    val veilDark = chatDark
 
     val cookieVm: CookieViewModel = viewModel()
     val cookieBalance by cookieVm.cookieBalance.collectAsStateWithLifecycle()
     val isSpending    by cookieVm.isSpending.collectAsStateWithLifecycle()
     val keyboard = LocalSoftwareKeyboardController.current
 
-    var match             by remember { mutableStateOf<SwipeMatch?>(null) }
-    var messages          by remember { mutableStateOf<List<SwipeMessage>>(emptyList()) }
+    var match             by remember(matchId) { mutableStateOf<SwipeMatch?>(null) }
+    var syncedMessages    by remember(matchId) { mutableStateOf<List<SwipeMessage>>(emptyList()) }
+    var outgoingTexts     by remember(matchId) { mutableStateOf<Map<String, OutgoingText>>(emptyMap()) }
+    var pendingWriteIds   by remember(matchId) { mutableStateOf<Set<String>>(emptySet()) }
+    val messages = remember(syncedMessages, outgoingTexts) {
+        (syncedMessages + outgoingTexts.values.map { it.message })
+            .distinctBy { it.chatKey }
+            .sortedWith(compareBy<SwipeMessage> { it.sentAt }.thenBy { it.chatKey })
+    }
+    var historyLoaded     by remember(matchId) { mutableStateOf(false) }
     // ── Pagination state ───────────────────────────────────────────────────────
-    var loadingOlderMsgs  by remember { mutableStateOf(false) }
-    var noMoreOlderMsgs   by remember { mutableStateOf(false) }
+    var loadingOlderMsgs  by remember(matchId) { mutableStateOf(false) }
+    var noMoreOlderMsgs   by remember(matchId) { mutableStateOf(false) }
     // Holds the oldest DocumentSnapshot so we can paginate backwards
-    var oldestMsgDoc by remember { mutableStateOf<com.google.firebase.firestore.DocumentSnapshot?>(null) }
-    var messageInput      by remember { mutableStateOf("") }
+    var oldestMsgDoc by remember(matchId) { mutableStateOf<com.google.firebase.firestore.DocumentSnapshot?>(null) }
+    var historyRetry by remember(matchId) { mutableIntStateOf(0) }
+    var historyError by remember(matchId) { mutableStateOf(false) }
+    var showSearch by rememberSaveable(matchId) { mutableStateOf(false) }
+    val timelineState = rememberLazyListState()
+    val snackbar = remember { SnackbarHostState() }
+    val draftPreferences = remember(context) { context.getSharedPreferences("veil_chat_drafts", android.content.Context.MODE_PRIVATE) }
+    val draftKey = "${uid}_$matchId"
+    var messageInput by rememberSaveable(draftKey) {
+        mutableStateOf(draftPreferences.getString(draftKey, "").orEmpty())
+    }
+    DisposableEffect(draftKey) {
+        onDispose {
+            if (uid.isNotBlank()) draftPreferences.edit().putString(draftKey, messageInput).apply()
+        }
+    }
+    fun feedback(text: String) {
+        scope.launch { snackbar.showSnackbar(text) }
+    }
     var loading           by remember { mutableStateOf(true) }
     var showStickerPicker    by remember { mutableStateOf(false) }
     var showBuyDialog         by remember { mutableStateOf(false) }
@@ -115,7 +202,6 @@ fun ConnectionRoomScreen(
     var showFlowerBurst       by remember { mutableStateOf(false) }
     var activeFlowerAsset     by remember { mutableStateOf("Gestures_flowers.lottie") }
     var showFlowerPicker      by remember { mutableStateOf(false) }
-    var lastSeenBurstMsgId    by remember { mutableStateOf("") }
 
     // Persist opened gift-wrap bubbles across restarts — keyed by matchId so
     // each chat has its own set. Values are sentAt Long timestamps joined by "|".
@@ -187,8 +273,8 @@ fun ConnectionRoomScreen(
                         text         = "",
                         sentAt       = System.currentTimeMillis(),
                         imageUrl     = imageUrl,
-                        replyToMsgId = replyMsg?.messageId ?: "",
-                        replyToText  = if ((replyMsg?.imageUrl ?: "").isNotEmpty()) "[Image]" else (replyMsg?.text?.take(60) ?: ""),
+                        replyToMsgId = replyMsg?.chatKey.orEmpty(),
+                        replyToText  = replyMsg?.preview()?.take(90).orEmpty(),
                         replyToAlias = replyMsg?.senderAlias ?: ""
                     )).await()
                 val newCount = imgSentToday + 1
@@ -213,27 +299,54 @@ fun ConnectionRoomScreen(
     val prefs              = context.getSharedPreferences("veil_safety", android.content.Context.MODE_PRIVATE)
     var showFirstTimeRules by remember { mutableStateOf(!prefs.getBoolean(prefKey, false)) }
     var showRulesInfo      by remember { mutableStateOf(false) }
-    var showReportDialog   by remember { mutableStateOf(false) }
-    var reportAnimPhase    by remember { mutableIntStateOf(0) }
+    var safetyMenu by remember(matchId) { mutableStateOf(false) }
+    var reportTarget by remember(matchId) { mutableStateOf<SafetyTarget?>(null) }
+    var blockUser by remember(matchId) { mutableStateOf(false) }
+    val safetyPartner = match?.let {
+        when (uid) {
+            it.userA -> it.userB
+            it.userB -> it.userA
+            else -> ""
+        }
+    }.orEmpty()
+    val canContact = contactAvailability(uid, safetyPartner)
+    val latestCanContact by rememberUpdatedState(canContact)
 
     val myAliasFromVm = vm.myProfile.collectAsStateWithLifecycle().value?.alias ?: ""
     LaunchedEffect(myAliasFromVm) {
         if (myAliasFromVm.isNotBlank()) myAlias = myAliasFromVm
     }
 
-    // ── WhatsApp-style notification suppression ───────────────────────────────
-    // While this chat is on screen, VeilMessagingService will skip DM notifications
-    // for this matchId. We also cancel any already-posted notification immediately.
-    DisposableEffect(matchId) {
-        com.ns.findyourintroverfriend.notifications.ActiveChatTracker.activeMatchId = matchId
-        val nm = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE)
-                    as android.app.NotificationManager
-        nm.cancel(matchId.hashCode() and 0x7FFFFFFF)
-        com.ns.findyourintroverfriend.notifications.DmNotifHistory.clear(context, matchId)
-        onDispose {
-            if (com.ns.findyourintroverfriend.notifications.ActiveChatTracker.activeMatchId == matchId) {
-                com.ns.findyourintroverfriend.notifications.ActiveChatTracker.activeMatchId = null
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycleState by lifecycle.currentStateAsState()
+    val readState = remember(context) { DmReadState(context) }
+    val voicePlayback = remember(matchId) { VoiceNotePlayback() }
+    DisposableEffect(voicePlayback) {
+        onDispose { voicePlayback.stop() }
+    }
+    DisposableEffect(matchId, lifecycle, canContact) {
+        val tracker = com.ns.findyourintroverfriend.notifications.ActiveChatTracker
+        fun clearActiveChat() {
+            if (tracker.activeMatchId == matchId) tracker.activeMatchId = null
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && canContact == true) {
+                tracker.activeMatchId = matchId
+                context.getSystemService(android.app.NotificationManager::class.java)
+                    .cancel(matchId.hashCode() and 0x7FFFFFFF)
+                com.ns.findyourintroverfriend.notifications.DmNotifHistory.clear(context, matchId)
+            } else if (event == Lifecycle.Event.ON_PAUSE) {
+                clearActiveChat()
+                voicePlayback.pause()
             }
+            if (event == Lifecycle.Event.ON_STOP && uid.isNotBlank()) {
+                draftPreferences.edit().putString(draftKey, messageInput).apply()
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            clearActiveChat()
         }
     }
 
@@ -279,109 +392,108 @@ fun ConnectionRoomScreen(
         }
     }
 
-    // Gift wrap bubbles in chat trigger the burst on tap — no auto-trigger.
-    // lastSeenBurstMsgId still used so sender’s own sent burst is trackable.
-
-    // ── Write own presence; read partner presence ──────────────────────────────
-    DisposableEffect(uid) {
-        if (uid.isNotBlank()) {
-            // New system: users/{uid}
-            db.collection("users").document(uid)
-                .set(mapOf("onlineAt" to System.currentTimeMillis()), com.google.firebase.firestore.SetOptions.merge())
-            // Legacy: presence/{uid}
-            db.collection("presence").document(uid)
-                .set(mapOf("lastSeen" to System.currentTimeMillis(), "online" to true))
+    val messageCollection = remember(matchId) { db.collection("matches").document(matchId).collection("messages") }
+    val messageQuery = remember(messageCollection) { messageCollection.orderBy("sentAt", Query.Direction.DESCENDING) }
+    DisposableEffect(matchId, historyRetry) {
+        val listener = db.collection("matches").document(matchId).addSnapshotListener { snapshot, error ->
+            match = snapshot?.toObject(SwipeMatch::class.java)
+            loading = snapshot == null && error == null
         }
-        onDispose {
-            if (uid.isNotBlank()) {
-                val now = System.currentTimeMillis()
-                db.collection("users").document(uid)
-                    .set(mapOf("onlineAt" to 0L, "lastSeen" to now), com.google.firebase.firestore.SetOptions.merge())
-                db.collection("presence").document(uid)
-                    .set(mapOf("lastSeen" to now, "online" to false))
+        onDispose { listener.remove() }
+    }
+
+    LaunchedEffect(matchId, canContact) {
+        if (canContact == true) return@LaunchedEffect
+        voicePlayback.stop()
+        syncedMessages = emptyList()
+        pendingWriteIds = emptySet()
+        oldestMsgDoc = null
+        noMoreOlderMsgs = false
+        historyLoaded = false
+        replyToMsg = null
+        longPressedMsg = null
+        showSearch = false
+    }
+
+    DisposableEffect(matchId, canContact, historyRetry, oldestMsgDoc) {
+        if (canContact != true) return@DisposableEffect onDispose { }
+        val cursor = oldestMsgDoc
+        val query = if (cursor == null) messageQuery.limit(30) else messageQuery.endAt(cursor)
+        val listener = query.addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
+            if (error != null) {
+                historyError = true
+                return@addSnapshotListener
+            }
+            snapshot ?: return@addSnapshotListener
+            val documents = snapshot.documents
+            val queued = documents.filter { it.metadata.hasPendingWrites() }.mapTo(mutableSetOf()) { it.id }
+            pendingWriteIds = queued
+            syncedMessages = documents.mapNotNull { doc ->
+                doc.toObject(SwipeMessage::class.java)?.copy(firestoreId = doc.id)
+            }
+            val confirmed = documents.filterNot { it.id in queued }.map { it.id }
+            outgoingTexts = outgoingTexts - confirmed.toSet()
+            historyLoaded = true
+            historyError = false
+            if (cursor == null && !snapshot.metadata.isFromCache) {
+                oldestMsgDoc = documents.lastOrNull()
+                noMoreOlderMsgs = documents.size < 30
+            }
+            val replied = replyToMsg
+            if (!snapshot.metadata.isFromCache && replied != null &&
+                replied.chatKey !in outgoingTexts && documents.none { it.id == replied.chatKey }
+            ) replyToMsg = null
+        }
+        onDispose { listener.remove() }
+    }
+
+    fun loadEarlier() {
+        val cursor = oldestMsgDoc ?: return
+        if (canContact != true || loadingOlderMsgs || noMoreOlderMsgs) return
+        loadingOlderMsgs = true
+        scope.launch {
+            try {
+                val page = messageQuery.startAfter(cursor).limit(20).get().await()
+                if (latestCanContact != true) return@launch
+                val earlier = page.documents.mapNotNull { doc ->
+                    doc.toObject(SwipeMessage::class.java)?.copy(firestoreId = doc.id)
+                }
+                syncedMessages = (syncedMessages + earlier).distinctBy { it.chatKey }
+                oldestMsgDoc = page.documents.lastOrNull() ?: cursor
+                if (!page.metadata.isFromCache) noMoreOlderMsgs = page.documents.size < 20
+                else if (earlier.isEmpty()) feedback("Connect to load earlier messages.")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                feedback("Couldn’t load earlier messages. Try again.")
+            } finally {
+                loadingOlderMsgs = false
             }
         }
     }
 
-    LaunchedEffect(matchId) {
-        try {
-            match = db.collection("matches").document(matchId).get().await()
-                .toObject(SwipeMatch::class.java)
-        } catch (_: Exception) {}
-        loading = false
-    }
-
-    LaunchedEffect(matchId) {
-        db.collection("matches").document(matchId)
-            .addSnapshotListener { snap, _ -> snap?.toObject(SwipeMatch::class.java)?.let { match = it } }
-    }
-
-    // ── Instagram-style paginated message loading ─────────────────────────────
-    // Phase 1: load the LAST 30 messages initially (fast, no full-history fetch)
-    LaunchedEffect(matchId) {
-        try {
-            val snap = db.collection("matches").document(matchId)
-                .collection("messages")
-                .orderBy("sentAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
-                .limit(30)
-                .get().await()
-            if (snap.documents.isNotEmpty()) {
-                // Reverse so oldest is at top — same visual order as before
-                val fetched = snap.documents
-                    .mapNotNull { it.toObject(SwipeMessage::class.java) }
-                    .reversed()
-                messages = fetched
-                oldestMsgDoc = snap.documents.lastOrNull() // last = oldest (DESC order)
-                noMoreOlderMsgs = snap.documents.size < 30
-            } else {
-                noMoreOlderMsgs = true
+    DisposableEffect(safetyPartner, canContact) {
+        if (safetyPartner.isBlank() || canContact != true) return@DisposableEffect onDispose { }
+        val listener = db.collection("users").document(safetyPartner).addSnapshotListener { snapshot, _ ->
+            if (snapshot == null || snapshot.getBoolean("showLastSeen") == false) {
+                partnerPresenceStatus = ""
+                partnerLastSeenMs = 0L
+                return@addSnapshotListener
             }
-        } catch (_: Exception) {}
+            val onlineAt = snapshot.getLong("onlineAt") ?: 0L
+            val lastSeen = snapshot.getLong("lastSeen") ?: 0L
+            val active = onlineAt > 0 && System.currentTimeMillis() - onlineAt in 0L..60_000L
+            partnerPresenceStatus = if (active) "active" else "gone"
+            partnerLastSeenMs = maxOf(onlineAt, lastSeen)
+        }
+        onDispose { listener.remove() }
     }
 
-    // Phase 2: real-time listener ONLY for new messages (sentAt > last loaded)
-    // This avoids re-downloading history every time a new message arrives
-    LaunchedEffect(matchId, messages.size) {
-        if (messages.isEmpty()) return@LaunchedEffect
-        val latestSentAt = messages.lastOrNull()?.sentAt ?: return@LaunchedEffect
-        db.collection("matches").document(matchId)
-            .collection("messages")
-            .orderBy("sentAt", com.google.firebase.firestore.Query.Direction.ASCENDING)
-            .whereGreaterThan("sentAt", latestSentAt)
-            .addSnapshotListener { snap, _ ->
-                val newMsgs = snap?.toObjects(SwipeMessage::class.java) ?: return@addSnapshotListener
-                if (newMsgs.isNotEmpty()) {
-                    // Merge — deduplicate by messageId
-                    val existingIds = messages.map { it.messageId }.toSet()
-                    val truly = newMsgs.filter { it.messageId !in existingIds }
-                    if (truly.isNotEmpty()) messages = messages + truly
-                }
-            }
-    }
-
-    // ── Real-time partner presence listener ────────────────────────────────────
-    LaunchedEffect(match) {
-        val m2 = match ?: return@LaunchedEffect
-        val partnerUid = if (m2.userA == uid) m2.userB else m2.userA
-        if (partnerUid.isBlank()) return@LaunchedEffect
-
-        // First try users/{uid} (written by PresenceManager — the new system)
-        db.collection("users").document(partnerUid)
-            .addSnapshotListener { snap, _ ->
-                if (snap == null) return@addSnapshotListener
-                val showPref = snap.getBoolean("showLastSeen") ?: true
-                if (!showPref) {
-                    partnerPresenceStatus = ""
-                    partnerLastSeenMs = 0L
-                    return@addSnapshotListener
-                }
-                val onlineAt  = snap.getLong("onlineAt") ?: 0L
-                val lastSeen  = snap.getLong("lastSeen")  ?: 0L
-                val now       = System.currentTimeMillis()
-                val isOnline  = onlineAt > 0L && (now - onlineAt) < 60_000L
-                partnerPresenceStatus = if (isOnline) "active" else "gone"
-                partnerLastSeenMs     = if (isOnline) now else lastSeen
-            }
+    LaunchedEffect(partnerPresenceStatus, partnerLastSeenMs) {
+        if (partnerPresenceStatus == "active") {
+            delay((partnerLastSeenMs + 60_000L - System.currentTimeMillis()).coerceAtLeast(0L))
+            partnerPresenceStatus = "gone"
+        }
     }
 
     // ── Dialogs ──────────────────────────────────────────────────────────────
@@ -445,31 +557,8 @@ fun ConnectionRoomScreen(
         )
     }
 
-    if (showReportDialog) {
-        val m = match
-        val reportAlias = if (m?.userA == uid) m?.aliasB ?: "User" else m?.aliasA ?: "User"
-        ChatReportDialog(
-            partnerAlias = reportAlias,
-            onDismiss = { showReportDialog = false },
-            onSubmit  = { reason, note ->
-                showReportDialog = false; reportAnimPhase = 1
-                scope.launch {
-                    try {
-                        val m2 = match ?: return@launch
-                        val partnerId = if (m2.userA == uid) m2.userB else m2.userA
-                        db.collection("veilReports").add(mapOf(
-                            "type" to "chat", "matchId" to matchId,
-                            "reportedUid" to partnerId, "reportedBy" to uid,
-                            "reason" to reason, "note" to note,
-                            "reportedAt" to System.currentTimeMillis(), "status" to "pending"
-                        )).await()
-                        db.collection("matches").document(matchId)
-                            .update("flaggedAt", System.currentTimeMillis(), "flaggedBy", uid).await()
-                    } catch (_: Exception) {}
-                }
-            }
-        )
-    }
+    reportTarget?.let { SafetyForm(it) { reportTarget = null } }
+    if (blockUser) BlockUserDialog(uid, safetyPartner, onDismiss = { blockUser = false }, onBlocked = { blockUser = false })
 
     // ── Main UI ───────────────────────────────────────────────────────────────
     Box(
@@ -494,6 +583,95 @@ fun ConnectionRoomScreen(
         val partnerAlias = if (isUserA) m.aliasB else m.aliasA
         val partnerPhoto = if (isUserA) m.photoB else m.photoA
 
+        if (canContact != true) {
+            Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center) {
+                Text(if (canContact == false) "Direct contact is unavailable." else "Checking chat availability…", color = IGPrimary)
+                TextButton(onClick = onBack) { Text("Back") }
+                if (safetyPartner.isNotBlank()) TextButton(onClick = {
+                    reportTarget = SafetyTarget("profile", "Report User", reportedUserId = safetyPartner)
+                }) { Text("Report User") }
+            }
+            return@Box
+        }
+
+        val composerFocus = remember { FocusRequester() }
+        fun replyTo(message: SwipeMessage) {
+            replyToMsg = message
+            composerFocus.requestFocus()
+            keyboard?.show()
+        }
+
+        fun sendText(message: SwipeMessage) {
+            if (uid.isBlank() || latestCanContact != true) return
+            outgoingTexts = outgoingTexts + (message.chatKey to OutgoingText(message))
+            scope.launch {
+                try {
+                    messageCollection.document(message.chatKey).set(message).await()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    if (message.chatKey in outgoingTexts) {
+                        outgoingTexts = outgoingTexts + (message.chatKey to OutgoingText(message, failed = true))
+                    }
+                    return@launch
+                }
+                try {
+                    com.ns.findyourintroverfriend.notifications.VeilNotifier.sendDmMessage(
+                        toUid = partnerUid, fromAlias = message.senderAlias, fromUid = uid,
+                        matchId = matchId, messageText = message.text
+                    )
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    android.util.Log.w("ConnectionRoom", "Unable to send the chat notification", error)
+                }
+            }
+        }
+
+        fun submitText() {
+            val input = messageInput.trim()
+            if (input.isBlank() || latestCanContact != true) return
+            val id = messageCollection.document().id
+            val reply = replyToMsg
+            val message = SwipeMessage(
+                messageId = id,
+                firestoreId = id,
+                senderUid = uid,
+                senderAlias = myAlias,
+                text = com.ns.findyourintroverfriend.util.ContentModerator.maskPhoneNumbers(input),
+                sentAt = System.currentTimeMillis(),
+                replyToMsgId = reply?.chatKey.orEmpty(),
+                replyToText = reply?.preview()?.take(90).orEmpty(),
+                replyToAlias = reply?.senderAlias.orEmpty()
+            )
+            messageInput = ""
+            replyToMsg = null
+            sendText(message)
+        }
+
+        longPressedMsg?.let { selected ->
+            val failed = outgoingTexts[selected.chatKey]?.failed == true
+            val pending = selected.chatKey in outgoingTexts || selected.chatKey in pendingWriteIds
+            ChatMessageActions(
+                message = selected,
+                onDismiss = { longPressedMsg = null },
+                onReply = if (pending) null else ({ replyTo(selected) }),
+                onCopy = if (selected.mediaLabel() != null) null else ({
+                    val clipboard = context.getSystemService(android.content.ClipboardManager::class.java)
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Message", selected.displayText()))
+                    if (android.os.Build.VERSION.SDK_INT < 33) feedback("Message copied.")
+                }),
+                onReport = if (selected.senderUid == partnerUid && selected.firestoreId.isNotBlank()) ({
+                    reportTarget = SafetyTarget("message", "Report Message", matchId = matchId, messageId = selected.firestoreId)
+                }) else null,
+                onRetry = if (!failed) null else ({ sendText(selected) }),
+                onDiscard = if (!failed) null else ({
+                    outgoingTexts = outgoingTexts - selected.chatKey
+                })
+            )
+        }
+
         Column(Modifier.fillMaxSize()) {
 
             // ── Header ─────────────────────────────────────────────────────
@@ -507,11 +685,14 @@ fun ConnectionRoomScreen(
             ) {
                 // Back
                 IconButton(onClick = onBack) {
-                    Icon(Icons.Rounded.ArrowBack, null, tint = IGPrimary, modifier = Modifier.size(22.dp))
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back", tint = IGPrimary, modifier = Modifier.size(22.dp))
                 }
 
                 // Avatar with active dot
                 Box(Modifier.size(44.dp)) {
+                    Box(Modifier.fillMaxSize().clip(CircleShape).background(IGSentBg), Alignment.Center) {
+                        Text(partnerAlias.take(1).uppercase(), color = IGChatAccent, fontWeight = FontWeight.SemiBold)
+                    }
                     AsyncImage(
                         model = partnerPhoto, contentDescription = null,
                         contentScale = ContentScale.Crop,
@@ -521,7 +702,7 @@ fun ConnectionRoomScreen(
                     if (partnerPresenceStatus == "active") {
                         Box(
                             Modifier.size(11.dp).align(Alignment.BottomEnd)
-                                .clip(CircleShape).background(Color(0xFF4CAF50))
+                                .clip(CircleShape).background(IGOnline)
                                 .border(2.dp, IGSurface, CircleShape)
                         )
                     }
@@ -536,11 +717,12 @@ fun ConnectionRoomScreen(
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         color = IGPrimary,
-                        maxLines = 1
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     when (partnerPresenceStatus) {
 
-                        "active" -> Text("Online", fontSize = 11.sp, color = Color(0xFF4CAF50),
+                        "active" -> Text("Online", fontSize = 11.sp, color = IGOnline,
                             fontWeight = FontWeight.SemiBold)
                         "gone"   -> {
                             val diff = System.currentTimeMillis() - partnerLastSeenMs
@@ -559,426 +741,446 @@ fun ConnectionRoomScreen(
                     }
                 }
 
-                // Info
-                IconButton(onClick = { showRulesInfo = true }) {
-                    Icon(Icons.Rounded.Info, null, tint = IGSecondary, modifier = Modifier.size(20.dp))
+                IconButton(onClick = { showSearch = true; keyboard?.hide() }) {
+                    Icon(Icons.Rounded.Search, "Search conversation", tint = IGPrimary)
                 }
-                // Game button — moved from input bar to header
-                IconButton(onClick = { showDrawGuessSheet = true; keyboard?.hide() }) {
-                    Icon(Icons.Rounded.SportsEsports, null,
-                        tint = Color(0xFF9C88FF), modifier = Modifier.size(20.dp))
-                }
-                IconButton(onClick = { showReportDialog = true }) {
-                    Icon(Icons.Rounded.Flag, null, tint = IGRed, modifier = Modifier.size(20.dp))
-                }
-            }
-
-            val scrollState = rememberScrollState()
-
-            // Auto-scroll to bottom only when a NEW message arrives (not history loads)
-            var prevMsgCount    by remember { mutableIntStateOf(0) }
-            var isLoadingHistory by remember { mutableStateOf(false) }
-            LaunchedEffect(messages.size) {
-                val countBefore = prevMsgCount
-                prevMsgCount = messages.size
-                // Skip scroll if we're in the middle of loading history (older prepends)
-                if (!isLoadingHistory && messages.size > countBefore) {
-                    val lastBefore = messages.getOrNull(countBefore - 1)?.sentAt ?: 0L
-                    val newLast    = messages.lastOrNull()?.sentAt ?: 0L
-                    // Only scroll when the LAST message changed (new incoming/sent message)
-                    if (newLast > lastBefore) scrollState.animateScrollTo(scrollState.maxValue)
-                }
-            }
-
-            // Detect scroll position — load older msgs when user reaches the top
-            LaunchedEffect(scrollState.value) {
-                if (scrollState.value == 0 && !loadingOlderMsgs && !noMoreOlderMsgs
-                        && messages.isNotEmpty() && oldestMsgDoc != null) {
-                    isLoadingHistory = true
-                    loadingOlderMsgs = true
-                    try {
-                        val snap = db.collection("matches").document(matchId)
-                            .collection("messages")
-                            .orderBy("sentAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
-                            .startAfter(oldestMsgDoc!!)
-                            .limit(20)
-                            .get().await()
-                        if (snap.documents.isNotEmpty()) {
-                            val older = snap.documents
-                                .mapNotNull { it.toObject(SwipeMessage::class.java) }
-                                .reversed()
-                            val existingIds = messages.map { it.messageId }.toSet()
-                            val truly = older.filter { it.messageId !in existingIds }
-                            if (truly.isNotEmpty()) messages = truly + messages
-                            oldestMsgDoc = snap.documents.lastOrNull()
-                        }
-                        noMoreOlderMsgs = snap.documents.size < 20
-                    } catch (_: Exception) {}
-                    loadingOlderMsgs = false
-                    // Small delay before re-enabling auto-scroll so compose settles
-                    kotlinx.coroutines.delay(120)
-                    isLoadingHistory = false
-                }
-            }
-
-
-            Column(
-                Modifier
-                    .weight(1f)
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = 12.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                // ── Top of list: older messages indicator ───────────────────────────
-                if (loadingOlderMsgs) {
-                    Box(Modifier.fillMaxWidth().padding(vertical = 10.dp), contentAlignment = Alignment.Center) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(14.dp),
-                                strokeWidth = 1.5.dp,
-                                color = IGSecondary
-                            )
-                            androidx.compose.material3.Text(
-                                "Loading older messages...",
-                                fontSize = 11.sp,
-                                color = IGSecondary
-                            )
-                        }
+                Box {
+                    IconButton(onClick = { safetyMenu = true }) {
+                        Icon(Icons.Rounded.MoreVert, "Conversation options", tint = IGPrimary)
                     }
-                } else if (noMoreOlderMsgs && messages.isNotEmpty()) {
-                    Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-                        androidx.compose.material3.Text(
-                            "―  Beginning of conversation  ―",
-                            fontSize = 10.sp,
-                            color = IGSecondary.copy(alpha = 0.6f)
+                    MaterialTheme(
+                        colorScheme = MaterialTheme.colorScheme.copy(
+                            surface = ChatControlBackground,
+                            surfaceContainer = ChatControlBackground,
+                            surfaceTint = ChatControlBackground,
+                            onSurface = ChatControlForeground,
+                            onSurfaceVariant = ChatControlForeground
                         )
-                    }
-                }
-
-                if (messages.isEmpty()) {
-                    Column(
-                        Modifier.fillMaxWidth().padding(top = 60.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        AsyncImage(
-                            model = partnerPhoto, contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(72.dp).clip(CircleShape).border(1.dp, IGDivider, CircleShape)
+                        val menuColors = MenuDefaults.itemColors(
+                            textColor = ChatControlForeground,
+                            leadingIconColor = ChatControlForeground
                         )
-                        Text(partnerAlias, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = IGPrimary)
-                        Text("Connected on Veil", fontSize = 12.sp, color = IGSecondary)
-                        Spacer(Modifier.height(4.dp))
-                        Text("Say hello", fontSize = 13.sp, color = IGSecondary)
+                        DropdownMenu(expanded = safetyMenu, onDismissRequest = { safetyMenu = false }) {
+                            DropdownMenuItem(text = { Text("Play together") }, colors = menuColors,
+                                leadingIcon = { Icon(Icons.Rounded.SportsEsports, null) }, onClick = {
+                                    safetyMenu = false
+                                    keyboard?.hide()
+                                    showDrawGuessSheet = true
+                                })
+                            DropdownMenuItem(text = { Text("Chat guidelines") }, colors = menuColors,
+                                leadingIcon = { Icon(Icons.Rounded.Info, null) }, onClick = {
+                                    safetyMenu = false
+                                    showRulesInfo = true
+                                })
+                            HorizontalDivider(Modifier.padding(vertical = 4.dp), color = ChatControlBorder)
+                            DropdownMenuItem(text = { Text("Report user") }, colors = menuColors,
+                                leadingIcon = { Icon(Icons.Rounded.Flag, null) }, onClick = {
+                                    safetyMenu = false
+                                    reportTarget = SafetyTarget("profile", "Report User", reportedUserId = partnerUid)
+                                })
+                            DropdownMenuItem(text = { Text("Report conversation") }, colors = menuColors,
+                                leadingIcon = { Icon(Icons.Rounded.Flag, null) }, onClick = {
+                                    safetyMenu = false
+                                    reportTarget = SafetyTarget("conversation", "Report Conversation", matchId = matchId)
+                                })
+                            DropdownMenuItem(text = { Text("Block user") }, colors = menuColors,
+                                leadingIcon = { Icon(Icons.Rounded.Block, null) }, onClick = {
+                                    safetyMenu = false
+                                    blockUser = true
+                                })
+                        }
                     }
                 }
+            }
 
-                messages.forEach { msg ->
-                    val mine = msg.senderUid == uid
-                    val haptic = LocalHapticFeedback.current
-                    var swipeOffsetX by remember(msg.sentAt) { mutableStateOf(0f) }
-                    val swipeAnimX by animateFloatAsState(
-                        targetValue = swipeOffsetX,
-                        animationSpec = spring(stiffness = Spring.StiffnessMedium),
-                        label = "swipe_${msg.sentAt}"
+            val newestFirst = remember(messages) { messages.asReversed() }
+            val newest = newestFirst.firstOrNull()
+            val atLatest by remember(timelineState) {
+                derivedStateOf { timelineState.firstVisibleItemIndex == 0 && timelineState.firstVisibleItemScrollOffset < 48 }
+            }
+            var lastNewest by remember(matchId) { mutableStateOf<SwipeMessage?>(null) }
+            var hasNewMessages by remember(matchId) { mutableStateOf(false) }
+            val localSend by rememberUpdatedState(newest?.chatKey in outgoingTexts)
+            LaunchedEffect(newest?.chatKey) {
+                val previous = lastNewest
+                lastNewest = newest
+                if (newest != null && (previous == null || newest.sentAt >= previous.sentAt)) {
+                    if (previous == null || atLatest || localSend) timelineState.requestScrollToItem(0)
+                    else hasNewMessages = true
+                }
+            }
+            LaunchedEffect(atLatest) {
+                if (atLatest) hasNewMessages = false
+            }
+            val latestSynced = syncedMessages.firstOrNull()
+            LaunchedEffect(latestSynced?.chatKey, atLatest, lifecycleState, showSearch) {
+                if (atLatest && !showSearch && lifecycleState == Lifecycle.State.RESUMED && uid.isNotBlank() && latestSynced != null) {
+                    readState.markRead(
+                        readState.key(uid, matchId),
+                        DmMessagePosition(latestSynced.sentAt, latestSynced.chatKey)
                     )
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .offset(x = swipeAnimX.dp)
-                            .pointerInput(msg.sentAt) {
+                }
+            }
+
+            fun jumpToMessage(id: String) {
+                val index = newestFirst.indexOfFirst { it.chatKey == id || it.messageId == id }
+                if (index < 0) feedback("Message unavailable. You can load earlier messages above.")
+                else scope.launch { timelineState.scrollToItem(index) }
+            }
+
+            val canLoadEarlier = !noMoreOlderMsgs && oldestMsgDoc != null
+            if (showSearch) {
+                ChatSearchDialog(
+                    messages = newestFirst,
+                    canLoadEarlier = canLoadEarlier,
+                    loadingEarlier = loadingOlderMsgs,
+                    onLoadEarlier = ::loadEarlier,
+                    onDismiss = { showSearch = false },
+                    onSelect = {
+                        showSearch = false
+                        jumpToMessage(it)
+                    }
+                )
+            }
+            val timeFormat = remember { java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT) }
+            val dayFormat = remember { java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM) }
+            val today = java.time.LocalDate.now()
+            val zone = java.time.ZoneId.systemDefault()
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                if (messages.isEmpty() && historyLoaded && !historyError) {
+                    Column(
+                        Modifier.align(Alignment.Center).padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("Start the conversation", color = IGPrimary, fontWeight = FontWeight.SemiBold)
+                        Text("Say hello to $partnerAlias.", color = IGSecondary, fontSize = 13.sp)
+                    }
+                }
+                LazyColumn(
+                    state = timelineState,
+                    reverseLayout = true,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.Bottom)
+                ) {
+                    itemsIndexed(newestFirst, key = { _, msg -> msg.chatKey }) { index, msg ->
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            val day = msg.localDay(zone)
+                            if (newestFirst.getOrNull(index + 1)?.localDay(zone) != day) {
+                                val label = when (day) {
+                                    today -> "Today"
+                                    today.minusDays(1) -> "Yesterday"
+                                    else -> dayFormat.format(java.util.Date(msg.sentAt))
+                                }
+                                Surface(
+                                    shape = CircleShape,
+                                    color = IGFieldBg,
+                                    modifier = Modifier.padding(top = 8.dp, bottom = 12.dp)
+                                ) {
+                                    Text(label, color = IGSecondary, fontSize = 11.sp,
+                                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 4.dp))
+                                }
+                            }
+                            val mine = msg.senderUid == uid
+                            val outgoing = outgoingTexts[msg.chatKey]
+                            val pending = outgoing != null || msg.chatKey in pendingWriteIds
+                            val haptic = LocalHapticFeedback.current
+                            var swipeOffsetX by remember { mutableFloatStateOf(0f) }
+                            val swipeAnimX by animateFloatAsState(swipeOffsetX, label = "reply offset")
+                            val swipeToReply = if (pending) Modifier else Modifier.pointerInput(msg.chatKey) {
+                                val threshold = 48.dp.toPx()
                                 detectHorizontalDragGestures(
                                     onDragEnd = {
-                                        if (swipeOffsetX > 60f) {
+                                        if (swipeOffsetX >= threshold) {
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            replyToMsg = msg
-                                            longPressedMsg = null
+                                            replyTo(msg)
                                         }
                                         swipeOffsetX = 0f
                                     },
                                     onDragCancel = { swipeOffsetX = 0f },
-                                    onHorizontalDrag = { _, dragAmount ->
-                                        val new = (swipeOffsetX + dragAmount * 0.4f).coerceIn(0f, 80f)
-                                        swipeOffsetX = new
+                                    onHorizontalDrag = { _, delta ->
+                                        swipeOffsetX = (swipeOffsetX + delta * 0.7f).coerceIn(0f, threshold * 1.3f)
                                     }
                                 )
-                            },
-                        horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start,
-                        verticalAlignment = Alignment.Bottom
-                    ) {
-                        // Receiver avatar (small, only for received)
-                        if (!mine) {
-                            AsyncImage(
-                                model = partnerPhoto, contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.size(26.dp).clip(CircleShape)
-                                    .border(0.5.dp, IGDivider, CircleShape)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                        }
-
-                        when {
-                            // ─ Voice Note bubble ───────────────────────────────────────
-                            msg.text.startsWith("voice_note::") -> {
-                                val parts = msg.text.removePrefix("voice_note::").split("::")
-                                val url   = parts.getOrNull(0) ?: ""
-                                val dur   = parts.getOrNull(1)?.toIntOrNull() ?: 0
-                                if (url.isNotBlank()) VoiceNotePlayerBubble(url, dur, mine)
                             }
-                            // ─ Drawing bubble ────────────────────────────────────────────
-                            msg.text.startsWith("drawing::") -> {
-                                val url = msg.text.removePrefix("drawing::")
-                                if (url.isNotBlank()) DrawingBubble(url)
-                            }
-                            // ─ Cookie Gift bubble ───────────────────────────────────────────
-                            msg.text.startsWith("gift_cookies_") -> {
-                                val amount = msg.text.removePrefix("gift_cookies_").toIntOrNull() ?: 0
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                    modifier = Modifier
-                                        .widthIn(max = 240.dp)
-                                        .clip(RoundedCornerShape(18.dp))
-                                        .background(if (mine) Color(0xFFFFF8E1) else Color(0xFFFFFDE7))
-                                        .border(1.dp, Color(0xFFFFD54F).copy(0.5f), RoundedCornerShape(18.dp))
-                                        .padding(horizontal = 14.dp, vertical = 12.dp)
-                                ) {
-                                    Box(Modifier.size(36.dp).clip(CircleShape).background(Color(0xFFFFD54F).copy(0.3f)),
-                                        Alignment.Center) {
-                                        Icon(Icons.Rounded.Favorite, null,
-                                            tint = Color(0xFF7A5200), modifier = Modifier.size(18.dp))
-                                    }
-                                    Column {
-                                        Text(
-                                            if (mine) "Gifted $amount cookies" else "Received $amount cookies",
-                                            fontWeight = FontWeight.Bold, fontSize = 13.sp,
-                                            color = Color(0xFF7A5200)
-                                        )
-                                        Text(
-                                            if (mine) "A sweet gesture" else "What a treat!",
-                                            fontSize = 11.sp, color = Color(0xFFAA7020)
+                            Column(
+                                Modifier.fillMaxWidth()
+                                    .offset { IntOffset(swipeAnimX.roundToInt(), 0) }
+                                    .then(swipeToReply),
+                                horizontalAlignment = if (mine) Alignment.End else Alignment.Start
+                            ) {
+                                when {
+                                    // ─ Voice Note bubble ───────────────────────────────────────
+                                    msg.text.startsWith("voice_note::") -> {
+                                        val parts = msg.text.removePrefix("voice_note::").split("::")
+                                        val url   = parts.getOrNull(0) ?: ""
+                                        val dur   = parts.getOrNull(1)?.toIntOrNull() ?: 0
+                                        if (url.isNotBlank()) VoiceNotePlayerBubble(
+                                            url = url,
+                                            durationSec = dur,
+                                            playback = voicePlayback,
+                                            bubbleColor = if (mine) IGSentBg else IGRecvBg,
+                                            textColor = if (mine) IGSentText else IGRecvText,
+                                            accent = IGChatAccent
                                         )
                                     }
-                                }
-                            }
-                            // ─ Flower Burst → premium gift card bubble ──────────────────
-                            msg.text == "flower_burst" || msg.text.startsWith("flower_burst::") -> {
-                                val flowerAsset = if (msg.text.contains("::"))
-                                    msg.text.substringAfter("::") + ".lottie"
-                                else "Gestures_flowers.lottie"
-                                val isOpened = msg.sentAt in openedGiftKeys
-
-                                val inf = rememberInfiniteTransition(label = "glow_${msg.sentAt}")
-                                val glowAlpha by inf.animateFloat(
-                                    initialValue = 0.4f, targetValue = 1f,
-                                    animationSpec = infiniteRepeatable(
-                                        tween(1400, easing = FastOutSlowInEasing),
-                                        RepeatMode.Reverse
-                                    ), label = "glowA_${msg.sentAt}"
-                                )
-
-                                // Dark-aware card colors
-                                val cardBgOpen   = if (_chatDark) Color(0xFF1E1E24) else Color(0xFFF5F5F5)
-                                val cardBgClosed = if (_chatDark) Color(0xFF1A1520) else Color(0xFFFFF8F9)
-                                val cardBorderOpen  = if (_chatDark) Color(0xFF2A2A32) else Color(0xFFDDDDDD)
-                                val cardTitleOpen   = if (_chatDark) Color(0xFF666675) else Color(0xFFAAAAAA)
-                                val cardTitleClosed = if (_chatDark) Color(0xFFE8E8EC) else Color(0xFF222222)
-
-                                Column(
-                                    modifier = Modifier
-                                        .widthIn(max = 140.dp)
-                                        .clip(RoundedCornerShape(18.dp))
-                                        .background(if (isOpened) cardBgOpen else cardBgClosed)
-                                        .border(
-                                            width = if (isOpened) 0.5.dp else 1.dp,
-                                            color = if (isOpened)
-                                                        cardBorderOpen
-                                                    else
-                                                        Color(0xFFE91E8C).copy(alpha = glowAlpha),
-                                            shape = RoundedCornerShape(18.dp)
-                                        )
-                                        .alpha(if (isOpened) 0.6f else 1f)
-                                        .clickable(enabled = !isOpened && !mine) {
-                                            persistOpenedKey(msg.sentAt)
-                                            activeFlowerAsset = flowerAsset
-                                            showFlowerBurst = true
-                                        }
-                                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
-                                    Text(if (isOpened) "🌸" else "🎁", fontSize = 28.sp)
-                                    Text(
-                                        when {
-                                            isOpened && mine  -> "Sent"
-                                            isOpened && !mine -> "Opened 🌸"
-                                            mine              -> "A surprise"
-                                            else              -> "A little surprise"
-                                        },
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = if (isOpened) cardTitleOpen else cardTitleClosed,
-                                        textAlign = TextAlign.Center
-                                    )
-                                    if (!mine && !isOpened) {
-                                        Text(
-                                            "Tap to unwrap ✨",
-                                            fontSize = 10.sp,
-                                            color = Color(0xFFE91E8C),
-                                            fontWeight = FontWeight.Medium,
-                                            letterSpacing = 0.2.sp
-                                        )
+                                    // ─ Drawing bubble ────────────────────────────────────────────
+                                    msg.text.startsWith("drawing::") -> {
+                                        val url = msg.text.removePrefix("drawing::")
+                                        if (url.isNotBlank()) DrawingBubble(url)
                                     }
-                                }
-                            }
-                            // ─ Draw & Guess Invite bubble ────────────────────────────
-                            msg.text.startsWith("game_invite_draw_guess::") -> {
-                                val roomId = msg.text.removePrefix("game_invite_draw_guess::")
-                                DrawGuessInviteBubble(
-                                    isMine   = mine,
-                                    roomId   = roomId,
-                                    onAccept = { onNavigateDrawGuess(roomId) }
-                                )
-                            }
-                            // ─ Whisper Room Invite bubble ────────────────────────────
-                            msg.text.startsWith("whisper_invite::") -> {
-                                val parts     = msg.text.removePrefix("whisper_invite::").split("::")
-                                val wRoomId   = parts.getOrNull(0) ?: ""
-                                val wTitle    = parts.getOrNull(1) ?: "Whisper Room"
-                                WhisperInviteBubble(
-                                    isMine      = mine,
-                                    roomTitle   = wTitle,
-                                    senderAlias = msg.senderAlias,
-                                    onJoin      = { if (wRoomId.isNotBlank()) onNavigateVoiceRoom(wRoomId) }
-                                )
-                            }
-                            // ─ Sticker bubble ────────────────────────────────────────────
-                            msg.text.startsWith("sticker_pack") -> {
-                                val drawableId = remember(msg.text) {
-                                    context.resources.getIdentifier(msg.text, "drawable", context.packageName)
-                                }
-                                if (drawableId != 0) {
-                                    Image(
-                                        painter = painterResource(drawableId),
-                                        contentDescription = "Sticker",
-                                        modifier = Modifier.size(120.dp).padding(2.dp),
-                                        contentScale = ContentScale.Fit
-                                    )
-                                } else {
-                                    Box(Modifier.size(36.dp).clip(CircleShape).background(IGDivider),
-                                        Alignment.Center) {
-                                        Icon(Icons.Rounded.Collections, null, tint = IGSecondary, modifier = Modifier.size(18.dp))
-                                    }
-                                }
-                            }
-                            // ─ Image bubble ────────────────────────────────────────────
-                            msg.imageUrl.isNotEmpty() -> {
-                                Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
-                                    // Reply quote if this image is a reply
-                                    if (msg.replyToAlias.isNotEmpty()) {
-                                        ReplyQuoteCard(
-                                            alias = msg.replyToAlias,
-                                            snippet = msg.replyToText,
-                                            isMine = mine
-                                        )
-                                        Spacer(Modifier.height(2.dp))
-                                    }
-                                    AsyncImage(
-                                        model = msg.imageUrl,
-                                        contentDescription = "Image",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .widthIn(max = 220.dp)
-                                            .aspectRatio(1f)
-                                            .clip(RoundedCornerShape(
-                                                topStart    = if (!mine) 4.dp else 18.dp,
-                                                topEnd      = if (mine) 4.dp else 18.dp,
-                                                bottomStart = 18.dp,
-                                                bottomEnd   = 18.dp
-                                            ))
-                                            .clickable { fullScreenImageUrl = msg.imageUrl }
-                                    )
-                                    val fmt = remember { java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()) }
-                                    Text(fmt.format(java.util.Date(msg.sentAt)), fontSize = 10.sp, color = IGSecondary,
-                                        modifier = Modifier.padding(top = 3.dp, start = 4.dp, end = 4.dp))
-                                }
-                            }
-                            // ─ Normal text bubble ────────────────────────────────────────
-                            else -> {
-                                val showTime = longPressedMsg?.sentAt == msg.sentAt
-                                Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
-                                    // Proper WhatsApp-style reply quote card
-                                    if (msg.replyToAlias.isNotEmpty()) {
-                                        ReplyQuoteCard(
-                                            alias = msg.replyToAlias,
-                                            snippet = msg.replyToText,
-                                            isMine = mine
-                                        )
-                                        Spacer(Modifier.height(2.dp))
-                                    } else if (msg.text.startsWith("@")) {
-                                        // Legacy: old @-prefixed messages
-                                        val firstNewline = msg.text.indexOf('\n')
-                                        val tagLine = if (firstNewline > 0) msg.text.substring(0, firstNewline) else ""
-                                        if (tagLine.startsWith("@")) {
-                                            Box(
-                                                Modifier
-                                                    .widthIn(max = 260.dp)
-                                                    .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
-                                                    .background(if (mine) Color(0xFF2A2A2A) else Color(0xFFD8D8D8))
-                                                    .padding(horizontal = 12.dp, vertical = 5.dp)
-                                            ) {
-                                                Text(tagLine, fontSize = 11.sp,
-                                                    color = if (mine) Color(0xFFAAAAAA) else Color(0xFF555555),
-                                                    fontWeight = FontWeight.Medium)
+                                    // ─ Cookie Gift bubble ───────────────────────────────────────────
+                                    msg.text.startsWith("gift_cookies_") -> {
+                                        val amount = msg.text.removePrefix("gift_cookies_").toIntOrNull() ?: 0
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            modifier = Modifier
+                                                .widthIn(max = 240.dp)
+                                                .clip(RoundedCornerShape(18.dp))
+                                                .background(if (mine) Color(0xFFFFF8E1) else Color(0xFFFFFDE7))
+                                                .border(1.dp, Color(0xFFFFD54F).copy(0.5f), RoundedCornerShape(18.dp))
+                                                .padding(horizontal = 14.dp, vertical = 12.dp)
+                                        ) {
+                                            Box(Modifier.size(36.dp).clip(CircleShape).background(Color(0xFFFFD54F).copy(0.3f)),
+                                                Alignment.Center) {
+                                                Icon(Icons.Rounded.Favorite, null,
+                                                    tint = Color(0xFF7A5200), modifier = Modifier.size(18.dp))
+                                            }
+                                            Column {
+                                                Text(
+                                                    if (mine) "Gifted $amount cookies" else "Received $amount cookies",
+                                                    fontWeight = FontWeight.Bold, fontSize = 13.sp,
+                                                    color = Color(0xFF7A5200)
+                                                )
+                                                Text(
+                                                    if (mine) "A sweet gesture" else "What a treat!",
+                                                    fontSize = 11.sp, color = Color(0xFFAA7020)
+                                                )
                                             }
                                         }
                                     }
-                                    Box(
-                                        Modifier
-                                            .widthIn(max = 260.dp)
-                                            .clip(RoundedCornerShape(
-                                                topStart    = if (!mine && msg.text.startsWith("@")) 0.dp else 18.dp,
-                                                topEnd      = if (mine  && msg.text.startsWith("@")) 0.dp else 18.dp,
-                                                bottomStart = if (mine) 18.dp else 4.dp,
-                                                bottomEnd   = if (mine) 4.dp  else 18.dp
-                                            ))
-                                            .background(if (mine) IGSentBg else IGRecvBg)
-                                            .combinedClickable(
-                                                onClick      = { longPressedMsg = null },
-                                                onLongClick  = {
-                                                    longPressedMsg = if (longPressedMsg?.sentAt == msg.sentAt) null else msg
+                                    // ─ Flower Burst → premium gift card bubble ──────────────────
+                                    msg.text == "flower_burst" || msg.text.startsWith("flower_burst::") -> {
+                                        val flowerAsset = if (msg.text.contains("::"))
+                                            msg.text.substringAfter("::") + ".lottie"
+                                        else "Gestures_flowers.lottie"
+                                        val isOpened = msg.sentAt in openedGiftKeys
+
+                                        val inf = rememberInfiniteTransition(label = "glow_${msg.sentAt}")
+                                        val glowAlpha by inf.animateFloat(
+                                            initialValue = 0.4f, targetValue = 1f,
+                                            animationSpec = infiniteRepeatable(
+                                                tween(1400, easing = FastOutSlowInEasing),
+                                                RepeatMode.Reverse
+                                            ), label = "glowA_${msg.sentAt}"
+                                        )
+
+                                        // Dark-aware card colors
+                                        val cardBgOpen   = if (chatDark) Color(0xFF1E1E24) else Color(0xFFF5F5F5)
+                                        val cardBgClosed = if (chatDark) Color(0xFF1A1520) else Color(0xFFFFF8F9)
+                                        val cardBorderOpen  = if (chatDark) Color(0xFF2A2A32) else Color(0xFFDDDDDD)
+                                        val cardTitleOpen   = if (chatDark) Color(0xFF666675) else Color(0xFFAAAAAA)
+                                        val cardTitleClosed = if (chatDark) Color(0xFFE8E8EC) else Color(0xFF222222)
+
+                                        Column(
+                                            modifier = Modifier
+                                                .widthIn(max = 140.dp)
+                                                .clip(RoundedCornerShape(18.dp))
+                                                .background(if (isOpened) cardBgOpen else cardBgClosed)
+                                                .border(
+                                                    width = if (isOpened) 0.5.dp else 1.dp,
+                                                    color = if (isOpened)
+                                                                cardBorderOpen
+                                                            else
+                                                                Color(0xFFE91E8C).copy(alpha = glowAlpha),
+                                                    shape = RoundedCornerShape(18.dp)
+                                                )
+                                                .alpha(if (isOpened) 0.6f else 1f)
+                                                .clickable(enabled = !isOpened && !mine) {
+                                                    persistOpenedKey(msg.sentAt)
+                                                    activeFlowerAsset = flowerAsset
+                                                    showFlowerBurst = true
                                                 }
-                                            )
-                                            .padding(horizontal = 14.dp, vertical = 10.dp)
-                                    ) {
-                                        val displayText = if (msg.text.startsWith("@")) {
-                                            val nl = msg.text.indexOf('\n')
-                                            if (nl > 0) msg.text.substring(nl + 1) else msg.text
-                                        } else msg.text
-                                        Text(displayText, fontSize = 14.sp,
-                                            color = if (mine) IGSentText else IGRecvText, lineHeight = 20.sp)
-                                    }
-                                    // Timestamp + Reply shown on long press
-                                    if (showTime) {
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.padding(top = 3.dp, start = 4.dp, end = 4.dp)
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(5.dp)
                                         ) {
-                                            val fmt = remember { java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault()) }
-                                            Text(fmt.format(java.util.Date(msg.sentAt)), fontSize = 10.sp, color = IGSecondary)
-                                            Text("·", fontSize = 10.sp, color = IGSecondary)
+                                            Text(if (isOpened) "🌸" else "🎁", fontSize = 28.sp)
                                             Text(
-                                                "Reply",
-                                                fontSize = 11.sp,
+                                                when {
+                                                    isOpened && mine  -> "Sent"
+                                                    isOpened && !mine -> "Opened 🌸"
+                                                    mine              -> "A surprise"
+                                                    else              -> "A little surprise"
+                                                },
+                                                fontSize = 12.sp,
                                                 fontWeight = FontWeight.SemiBold,
-                                                color = IGPrimary,
-                                                modifier = Modifier.clickable {
-                                                    replyToMsg     = msg
-                                                    longPressedMsg = null
-                                                }
+                                                color = if (isOpened) cardTitleOpen else cardTitleClosed,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            if (!mine && !isOpened) {
+                                                Text(
+                                                    "Tap to unwrap ✨",
+                                                    fontSize = 10.sp,
+                                                    color = Color(0xFFE91E8C),
+                                                    fontWeight = FontWeight.Medium,
+                                                    letterSpacing = 0.2.sp
+                                                )
+                                            }
+                                        }
+                                    }
+                                    // ─ Draw & Guess Invite bubble ────────────────────────────
+                                    msg.text.startsWith("game_invite_draw_guess::") -> {
+                                        val roomId = msg.text.removePrefix("game_invite_draw_guess::")
+                                        DrawGuessInviteBubble(
+                                            isMine   = mine,
+                                            roomId   = roomId,
+                                            onAccept = { onNavigateDrawGuess(roomId) }
+                                        )
+                                    }
+                                    // ─ Whisper Room Invite bubble ────────────────────────────
+                                    msg.text.startsWith("whisper_invite::") -> {
+                                        val parts     = msg.text.removePrefix("whisper_invite::").split("::")
+                                        val wRoomId   = parts.getOrNull(0) ?: ""
+                                        val wTitle    = parts.getOrNull(1) ?: "Whisper Room"
+                                        WhisperInviteBubble(
+                                            isMine      = mine,
+                                            roomTitle   = wTitle,
+                                            senderAlias = msg.senderAlias,
+                                            onJoin      = { if (wRoomId.isNotBlank()) onNavigateVoiceRoom(wRoomId) }
+                                        )
+                                    }
+                                    // ─ Sticker bubble ────────────────────────────────────────────
+                                    msg.text.startsWith("sticker_pack") -> {
+                                        val drawableId = remember(msg.text) {
+                                            context.resources.getIdentifier(msg.text, "drawable", context.packageName)
+                                        }
+                                        if (drawableId != 0) {
+                                            Image(
+                                                painter = painterResource(drawableId),
+                                                contentDescription = "Sticker",
+                                                modifier = Modifier.size(120.dp).padding(2.dp),
+                                                contentScale = ContentScale.Fit
+                                            )
+                                        } else {
+                                            Box(Modifier.size(36.dp).clip(CircleShape).background(IGDivider),
+                                                Alignment.Center) {
+                                                Icon(Icons.Rounded.Collections, null, tint = IGSecondary, modifier = Modifier.size(18.dp))
+                                            }
+                                        }
+                                    }
+                                    // ─ Image bubble ────────────────────────────────────────────
+                                    msg.imageUrl.isNotEmpty() -> {
+                                        Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
+                                            // Reply quote if this image is a reply
+                                            if (msg.replyToAlias.isNotEmpty()) {
+                                                ReplyQuoteCard(
+                                                    alias = msg.replyToAlias,
+                                                    snippet = msg.replyToText,
+                                                    isMine = mine,
+                                                    onClick = { jumpToMessage(msg.replyToMsgId) }.takeIf { msg.replyToMsgId.isNotBlank() }
+                                                )
+                                                Spacer(Modifier.height(2.dp))
+                                            }
+                                            AsyncImage(
+                                                model = msg.imageUrl,
+                                                contentDescription = "Image",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .widthIn(max = 220.dp)
+                                                    .aspectRatio(1f)
+                                                    .clip(RoundedCornerShape(
+                                                        topStart    = if (!mine) 4.dp else 18.dp,
+                                                        topEnd      = if (mine) 4.dp else 18.dp,
+                                                        bottomStart = 18.dp,
+                                                        bottomEnd   = 18.dp
+                                                    ))
+                                                    .combinedClickable(
+                                                        onClick = { fullScreenImageUrl = msg.imageUrl },
+                                                        onLongClickLabel = "Message actions",
+                                                        onLongClick = { longPressedMsg = msg }
+                                                    )
+                                            )
+                                        }
+                                    }
+                                    else -> {
+                                        Column(horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
+                                            if (msg.replyToAlias.isNotEmpty()) {
+                                                ReplyQuoteCard(
+                                                    alias = msg.replyToAlias,
+                                                    snippet = msg.replyToText,
+                                                    isMine = mine,
+                                                    onClick = { jumpToMessage(msg.replyToMsgId) }.takeIf { msg.replyToMsgId.isNotBlank() }
+                                                )
+                                                Spacer(Modifier.height(3.dp))
+                                            }
+                                            val cardShape = RoundedCornerShape(10.dp)
+                                            val marker = if (mine) IGChatAccent else IGOnline
+                                            Text(
+                                                msg.displayText(),
+                                                fontSize = 15.sp,
+                                                lineHeight = 22.sp,
+                                                color = if (mine) IGSentText else IGRecvText,
+                                                modifier = Modifier.widthIn(max = 278.dp)
+                                                    .clip(cardShape)
+                                                    .background(if (mine) IGSentBg else IGRecvBg)
+                                                    .border(1.dp, IGDivider, cardShape)
+                                                    .drawBehind {
+                                                        val markerWidth = 2.dp.toPx()
+                                                        val inset = 7.dp.toPx()
+                                                        val markerOnRight = mine == (layoutDirection == LayoutDirection.Ltr)
+                                                        drawRoundRect(
+                                                            color = marker,
+                                                            topLeft = Offset(
+                                                                if (markerOnRight) size.width - inset - markerWidth else inset,
+                                                                inset
+                                                            ),
+                                                            size = Size(markerWidth, (size.height - inset * 2).coerceAtLeast(0f)),
+                                                            cornerRadius = CornerRadius(markerWidth / 2)
+                                                        )
+                                                    }
+                                                    .combinedClickable(
+                                                        onClick = {},
+                                                        onLongClickLabel = "Message actions",
+                                                        onLongClick = { longPressedMsg = msg }
+                                                    )
+                                                    .padding(
+                                                        start = if (mine) 13.dp else 18.dp,
+                                                        end = if (mine) 18.dp else 13.dp,
+                                                        top = 10.dp,
+                                                        bottom = 10.dp
+                                                    )
+                                            )
+                                        }
+                                    }
+                                }
+                                val next = newestFirst.getOrNull(index - 1)
+                                val endsRun = next == null || next.senderUid != msg.senderUid ||
+                                    next.localDay(zone) != day || next.sentAt - msg.sentAt > 120_000L
+                                if (endsRun || pending || msg.mediaLabel() != null) {
+                                    Row(
+                                        Modifier.padding(start = 4.dp, end = 4.dp, bottom = 2.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(timeFormat.format(java.util.Date(msg.sentAt)), fontSize = 11.sp, color = IGSecondary)
+                                        when {
+                                            outgoing?.failed == true -> Text(
+                                                "Failed · Retry",
+                                                color = IGRed, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                                                modifier = Modifier.clickable { sendText(msg) }.padding(vertical = 5.dp)
+                                            )
+                                            pending -> Text("Sending…", color = IGSecondary, fontSize = 11.sp)
+                                            mine && index == 0 -> Text("Sent", color = IGSecondary, fontSize = 11.sp)
+                                        }
+                                        if (msg.mediaLabel() != null) {
+                                            Icon(
+                                                Icons.Rounded.MoreHoriz, "Message actions", tint = IGSecondary,
+                                                modifier = Modifier.clip(CircleShape).clickable { longPressedMsg = msg }
+                                                    .padding(horizontal = 8.dp, vertical = 4.dp).size(17.dp)
                                             )
                                         }
                                     }
@@ -986,11 +1188,39 @@ fun ConnectionRoomScreen(
                             }
                         }
                     }
+                    item("history-control") {
+                        Box(Modifier.fillMaxWidth().padding(vertical = 4.dp), contentAlignment = Alignment.Center) {
+                            when {
+                                historyError -> TextButton(onClick = { historyRetry += 1 }) {
+                                    Text("Couldn’t load chat · Retry", color = IGChatAccent)
+                                }
+                                !historyLoaded || loadingOlderMsgs -> CircularProgressIndicator(
+                                    color = IGChatAccent, strokeWidth = 2.dp, modifier = Modifier.size(20.dp)
+                                )
+                                canLoadEarlier -> TextButton(onClick = ::loadEarlier) {
+                                    Text("Load earlier messages", color = IGChatAccent)
+                                }
+                            }
+                        }
+                    }
                 }
-
-                Spacer(Modifier.height(4.dp))
+                if (messages.isNotEmpty() && !atLatest) {
+                    Button(
+                        onClick = { scope.launch { timelineState.scrollToItem(0) } },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ChatControlBackground,
+                            contentColor = ChatControlForeground
+                        ),
+                        border = BorderStroke(1.dp, ChatControlBorder),
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp)
+                    ) {
+                        Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text(if (hasNewMessages) "New messages" else "Latest", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
             }
-
             // ── Sticker picker panel (WhatsApp-style, above input bar) ──────────
             val pack1Stickers = listOf(
                 R.drawable.sticker_pack1_1,  R.drawable.sticker_pack1_2,  R.drawable.sticker_pack1_3,
@@ -1130,7 +1360,7 @@ fun ConnectionRoomScreen(
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .background(if (_chatDark) Color(0xFF1A1A20) else Color(0xFFF7F7F7))
+                            .background(if (chatDark) Color(0xFF1A1A20) else Color(0xFFF7F7F7))
                             .border(BorderStroke(0.5.dp, IGDivider)),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1142,11 +1372,8 @@ fun ConnectionRoomScreen(
                                 replied.senderAlias,
                                 fontSize = 12.sp, fontWeight = FontWeight.Bold, color = IGPrimary
                             )
-                            val snippet = when {
-                                replied.imageUrl.isNotEmpty() -> "📷 Image"
-                                else -> replied.text.take(55).replace('\n', ' ')
-                            }
-                            Text(snippet, fontSize = 12.sp, color = IGSecondary, maxLines = 1)
+                            Text(replied.preview(), fontSize = 12.sp, color = IGSecondary,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         if (replied.imageUrl.isNotEmpty()) {
                             AsyncImage(
@@ -1157,7 +1384,7 @@ fun ConnectionRoomScreen(
                             Spacer(Modifier.width(8.dp))
                         }
                         IconButton(onClick = { replyToMsg = null }, modifier = Modifier.size(36.dp)) {
-                            Icon(Icons.Rounded.Close, null, tint = IGSecondary, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Rounded.Close, "Cancel reply", tint = IGSecondary, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
@@ -1217,36 +1444,19 @@ fun ConnectionRoomScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // ── Gesture (flower) button ────────────────────────────────────
-                Box(
-                    Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (showGesturePanel)
-                                if (_chatDark) Color(0xFF3A1A2A) else Color(0xFFFFE4EF)
-                            else Color.Transparent
-                        )
-                        .border(
-                            BorderStroke(
-                                if (showGesturePanel) 1.5.dp else 0.dp,
-                                if (showGesturePanel) Color(0xFFE91E63) else Color.Transparent
-                            ),
-                            CircleShape
-                        )
-                        .clickable {
-                            showGesturePanel = !showGesturePanel
-                            showAttachPanel = false
-                            if (showGesturePanel) keyboard?.hide()
-                        },
-                    contentAlignment = Alignment.Center
+                val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+                IconButton(
+                    onClick = {
+                        val opening = !showGesturePanel
+                        if (opening) focusManager.clearFocus()
+                        showGesturePanel = opening
+                        showAttachPanel = false
+                        showStickerPicker = false
+                    },
+                    modifier = Modifier.size(42.dp).clip(CircleShape)
+                        .background(if (showGesturePanel) IGSentBg else Color.Transparent)
                 ) {
-                    Image(
-                        painter = painterResource(R.drawable.gesture),
-                        contentDescription = "Love Gestures",
-                        modifier = Modifier.size(28.dp),
-                        contentScale = ContentScale.Fit
-                    )
+                    Icon(Icons.Rounded.FavoriteBorder, "Gestures", tint = IGChatAccent)
                 }
 
                 // ── Attachment (+) button ──────────────────────────────────────
@@ -1256,14 +1466,15 @@ fun ConnectionRoomScreen(
                         .clip(CircleShape)
                         .background(
                             if (showAttachPanel)
-                                if (_chatDark) Color(0xFF252530) else IGDivider
+                                if (chatDark) Color(0xFF252530) else IGDivider
                             else Color.Transparent
                         )
                         .clickable {
-                            showAttachPanel = !showAttachPanel
+                            val opening = !showAttachPanel
+                            if (opening) focusManager.clearFocus()
+                            showAttachPanel = opening
                             showStickerPicker = false
                             showGesturePanel = false
-                            if (showAttachPanel) keyboard?.hide()
                         },
                     contentAlignment = Alignment.Center
                 ) {
@@ -1276,17 +1487,30 @@ fun ConnectionRoomScreen(
                 }
 
                 // Text field
+                val fieldShape = RoundedCornerShape(10.dp)
+                var composerFocused by remember { mutableStateOf(false) }
                 Box(
-                    Modifier.weight(1f).clip(RoundedCornerShape(24.dp))
-                        .border(1.dp, IGDivider, RoundedCornerShape(24.dp))
+                    Modifier.weight(1f).clip(fieldShape)
+                        .border(1.dp, if (composerFocused) IGChatAccent else IGDivider, fieldShape)
                         .background(IGFieldBg)
                         .padding(horizontal = 16.dp, vertical = 2.dp)
                 ) {
                     BasicTextField(
                         value = messageInput,
                         onValueChange = { if (it.length <= 500) messageInput = it },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                            .focusRequester(composerFocus)
+                            .onFocusChanged {
+                                composerFocused = it.isFocused
+                                if (it.isFocused) {
+                                    showAttachPanel = false
+                                    showGesturePanel = false
+                                    showStickerPicker = false
+                                }
+                            }
+                            .padding(vertical = 12.dp),
                         maxLines = 4,
+                        cursorBrush = SolidColor(IGChatAccent),
                         textStyle = LocalTextStyle.current.copy(
                             fontSize = 15.sp,
                             color = IGPrimary
@@ -1299,45 +1523,24 @@ fun ConnectionRoomScreen(
                     )
                 }
 
-                // Send
-                AnimatedVisibility(visible = messageInput.isNotBlank(), enter = scaleIn()+fadeIn(), exit = scaleOut()+fadeOut()) {
-                    Box(
-                        Modifier.size(42.dp).clip(CircleShape)
-                            .background(if (_chatDark) Color(0xFFE91E8C) else IGPrimary)
-                            .clickable {
-                                val rawText = messageInput.trim()
-                                val safeText = com.ns.findyourintroverfriend.util.ContentModerator.maskPhoneNumbers(rawText)
-                                messageInput = ""
-                                val replyMsg = replyToMsg
-                                replyToMsg = null; longPressedMsg = null
-                                scope.launch {
-                                    try {
-                                        db.collection("matches").document(matchId).collection("messages")
-                                            .add(SwipeMessage(
-                                                messageId    = db.collection("_").document().id,
-                                                senderUid    = uid,
-                                                senderAlias  = myAlias,
-                                                text         = safeText,
-                                                sentAt       = System.currentTimeMillis(),
-                                                replyToMsgId = replyMsg?.messageId ?: "",
-                                                replyToText  = if ((replyMsg?.imageUrl ?: "").isNotEmpty()) "[Image]" else (replyMsg?.text?.take(60) ?: ""),
-                                                replyToAlias = replyMsg?.senderAlias ?: ""
-                                            )).await()
-                                        val partnerUid = if (isUserA) m.userB else m.userA
-                                        com.ns.findyourintroverfriend.notifications.VeilNotifier
-                                            .sendDmMessage(toUid=partnerUid, fromAlias=myAlias, fromUid=uid, matchId=matchId, messageText=safeText)
-                                    } catch (_: Exception) {}
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) { Icon(Icons.Rounded.Send, null, tint = Color.White, modifier = Modifier.size(20.dp)) }
-                }
-                // Upload progress
-                if (uploadingImage) {
-                    CircularProgressIndicator(modifier = Modifier.size(28.dp), color = IGPrimary, strokeWidth = 2.dp)
+                IconButton(
+                    onClick = ::submitText,
+                    enabled = messageInput.isNotBlank(),
+                    modifier = Modifier.size(44.dp).clip(fieldShape)
+                        .background(if (messageInput.isNotBlank()) IGChatAccent else IGFieldBg)
+                ) {
+                    Icon(
+                        Icons.Rounded.ArrowUpward, "Send message",
+                        tint = if (messageInput.isBlank()) IGSecondary else if (veilDark) IGBg else Color.White,
+                        modifier = Modifier.size(19.dp)
+                    )
                 }
             }
-
+            if (uploadingImage) LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth(),
+                color = IGChatAccent,
+                trackColor = IGFieldBg
+            )
             // ── Attachment Panel (slides up above input bar) ───────────────────
             AnimatedVisibility(
                 visible = showAttachPanel,
@@ -1636,14 +1839,6 @@ fun ConnectionRoomScreen(
 
         } // end Column
 
-        // ── Report overlay ────────────────────────────────────────────────────
-        if (reportAnimPhase > 0) {
-            ReportAnimOverlay(
-                phase = reportAnimPhase,
-                onPhaseEnd = { p -> if (p == 1) reportAnimPhase = 2 else reportAnimPhase = 0 }
-            )
-        }
-
         // ── Flower Burst overlay (full-screen, shown on both sender & receiver) ──────
         if (showFlowerBurst) {
             FlowerBurstEffect(
@@ -1873,142 +2068,6 @@ private fun DrawGuessInviteBubble(isMine: Boolean, roomId: String, onAccept: () 
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Report animation overlay
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable private fun ReportAnimOverlay(phase: Int, onPhaseEnd: (Int) -> Unit) {
-    val assetName = if (phase == 1) "afterBanAnimation.lottie" else "SuccessfullyReported.lottie"
-    val label     = if (phase == 1) "Report filed" else "Report submitted!"
-    val sublabel  = if (phase == 1) "Our team will review within 24 hours." else "Thank you for keeping Veil safe."
-    key(phase) {
-        val composition by rememberLottieComposition(LottieCompositionSpec.Asset(assetName))
-        val progress    by animateLottieCompositionAsState(composition = composition, iterations = 1, isPlaying = true, restartOnPlay = false)
-        LaunchedEffect(progress >= 1f, composition) {
-            if (progress >= 1f && composition != null) { delay(400); onPhaseEnd(phase) }
-        }
-        Box(Modifier.fillMaxSize().background(Color(0xF5FFFFFF)), contentAlignment = Alignment.Center) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.padding(32.dp)
-            ) {
-                LottieAnimation(composition = composition, progress = { progress }, modifier = Modifier.size(200.dp))
-                Text(label,    fontSize = 20.sp, fontWeight = FontWeight.Bold, color = IGPrimary)
-                Text(sublabel, fontSize = 14.sp, color = IGSecondary, textAlign = TextAlign.Center, lineHeight = 20.sp)
-            }
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Chat Report Dialog
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable private fun ChatReportDialog(
-    partnerAlias: String, onDismiss: () -> Unit, onSubmit: (String, String) -> Unit
-) {
-    var selectedReason by remember { mutableStateOf("") }
-    var note           by remember { mutableStateOf("") }
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onDismiss,
-        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Box(
-            Modifier.fillMaxSize().background(Color.Black.copy(0.4f)),
-            Alignment.BottomCenter
-        ) {
-            Column(
-                Modifier.fillMaxWidth()
-                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
-                    .background(IGSurface)
-            ) {
-                // Header
-                Box(
-                    Modifier.fillMaxWidth().background(IGPrimary)
-                        .padding(horizontal = 20.dp, vertical = 16.dp)
-                ) {
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Rounded.Flag, null, tint = IGRed, modifier = Modifier.size(18.dp))
-                            Text("Report $partnerAlias", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
-                        }
-                        Text("Select a reason below. Your report is anonymous.",
-                            fontSize = 11.sp, color = Color.White.copy(0.55f),
-                            modifier = Modifier.padding(top = 4.dp))
-                    }
-                }
-                // Reason chips
-                Column(
-                    Modifier.fillMaxWidth()
-                        .heightIn(max = 320.dp)
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text("What's happening?", fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-                        color = IGSecondary, modifier = Modifier.padding(bottom = 4.dp))
-                    VeilSafetyUtil.CHAT_REPORT_REASONS.forEach { reason ->
-                        val sel = selectedReason == reason
-                        Row(
-                            Modifier.fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (sel) IGPrimary else Color(0xFFF5F5F5))
-                                .clickable { selectedReason = reason }
-                                .padding(horizontal = 14.dp, vertical = 11.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(reason, fontSize = 13.sp,
-                                color = if (sel) Color.White else IGPrimary,
-                                fontWeight = if (sel) FontWeight.SemiBold else FontWeight.Normal,
-                                modifier = Modifier.weight(1f))
-                            if (sel) Icon(Icons.Rounded.CheckCircle, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                        }
-                    }
-                }
-                // Note field
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                    OutlinedTextField(
-                        value = note, onValueChange = { if (it.length <= 200) note = it },
-                        placeholder = { Text(if (selectedReason.endsWith("below)")) "Describe what happened…" else "Additional details (optional)",
-                            fontSize = 12.sp, color = IGSecondary) },
-                        modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 3,
-                        shape = RoundedCornerShape(10.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = IGPrimary, unfocusedBorderColor = IGDivider,
-                            focusedTextColor = IGPrimary, unfocusedTextColor = IGPrimary
-                        ),
-                        textStyle = LocalTextStyle.current.copy(fontSize = 13.sp)
-                    )
-                    Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("⚠️ False reports may lead to account action.", fontSize = 10.sp, color = IGSecondary)
-                        Text("${note.length}/200", fontSize = 10.sp, color = IGSecondary)
-                    }
-                }
-                // Buttons
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = onDismiss, modifier = Modifier.weight(1f).height(48.dp),
-                        shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, IGDivider)
-                    ) { Text("Cancel", color = IGSecondary, fontWeight = FontWeight.SemiBold) }
-                    Button(
-                        onClick = { if (selectedReason.isNotBlank()) onSubmit(selectedReason, note) },
-                        enabled = selectedReason.isNotBlank(),
-                        modifier = Modifier.weight(1f).height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = IGRed, disabledContainerColor = IGSecondary.copy(0.25f))
-                    ) { Text("Submit Report", fontWeight = FontWeight.Bold, fontSize = 14.sp) }
-                }
-            }
-        }
-    }
-}
-
 @Composable private fun StatusPill(label: String, done: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(Modifier.size(8.dp).clip(CircleShape).background(if (done) Color(0xFF4CAF50) else IGDivider))
@@ -2033,9 +2092,9 @@ private fun DrawGuessInviteBubble(isMine: Boolean, roomId: String, onAccept: () 
         spring(stiffness = Spring.StiffnessMediumLow), label = "pill_$label"
     )
 
-    val chipBg       = if (canAfford) IGSurface else if (_chatDark) Color(0xFF1A1A22) else Color(0xFFF5F5F5)
-    val chipBorder   = if (canAfford) IGPrimary  else if (_chatDark) Color(0xFF3A3A48) else Color(0xFFCCCCCC)
-    val badgeBg      = if (canAfford) IGPrimary  else if (_chatDark) Color(0xFF3A3A48) else Color(0xFFCCCCCC)
+    val chipBg       = if (canAfford) IGSurface else if (chatDark) Color(0xFF1A1A22) else Color(0xFFF5F5F5)
+    val chipBorder   = if (canAfford) IGPrimary  else if (chatDark) Color(0xFF3A3A48) else Color(0xFFCCCCCC)
+    val badgeBg      = if (canAfford) IGPrimary  else if (chatDark) Color(0xFF3A3A48) else Color(0xFFCCCCCC)
 
     Row(
         Modifier
@@ -2248,42 +2307,119 @@ private fun DrawGuessInviteBubble(isMine: Boolean, roomId: String, onAccept: () 
 //  Helpers
 // ──────────────────────────────────────────────────────────────────────────────
 
-/**
- * WhatsApp-style quoted reply card — left accent bar + alias + snippet.
- * Shown above the bubble when [alias] is non-empty.
- */
 @Composable
-fun ReplyQuoteCard(alias: String, snippet: String, isMine: Boolean) {
-    // In dark mode: sent-bubble has pink bg, so darken the quote card;
-    // received-bubble is dark grey, so lighten slightly.
-    val accentColor = if (isMine) {
-        if (_chatDark) Color(0xFFFF80C0) else Color(0xFF666666)
-    } else {
-        if (_chatDark) Color(0xFF9A9AB0) else Color(0xFF888888)
+private fun ChatMessageActions(
+    message: SwipeMessage,
+    onDismiss: () -> Unit,
+    onReply: (() -> Unit)?,
+    onCopy: (() -> Unit)?,
+    onReport: (() -> Unit)?,
+    onRetry: (() -> Unit)?,
+    onDiscard: (() -> Unit)?
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = IGSurface,
+        title = { Text("Message actions", color = IGPrimary) },
+        text = {
+            Column {
+                Text(message.preview().take(180), color = IGSecondary, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(8.dp))
+                val actions = listOf(
+                    "Reply" to onReply,
+                    "Copy text" to onCopy,
+                    "Retry sending" to onRetry,
+                    "Discard unsent message" to onDiscard,
+                    "Report message" to onReport
+                )
+                actions.forEach { (label, action) ->
+                    if (action != null) {
+                        TextButton(onClick = { onDismiss(); action() }) {
+                            Text(label, color = if (action == onReport || action == onDiscard) IGRed else IGChatAccent)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = IGChatAccent) } }
+    )
+}
+
+@Composable
+private fun ChatSearchDialog(
+    messages: List<SwipeMessage>,
+    canLoadEarlier: Boolean,
+    loadingEarlier: Boolean,
+    onLoadEarlier: () -> Unit,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    val term = query.trim()
+    val results = remember(messages, term) {
+        if (term.isBlank()) emptyList()
+        else messages.filter { it.preview().contains(term, ignoreCase = true) || it.replyToText.contains(term, ignoreCase = true) }
     }
-    val bgColor = if (isMine) {
-        if (_chatDark) Color(0xFF3A1028) else Color(0xFF2C2C2E)
-    } else {
-        if (_chatDark) Color(0xFF2A2A34) else Color(0xFFDEDEDE)
-    }
-    val subColor = if (isMine) {
-        if (_chatDark) Color(0xFFCC88AA) else Color(0xFFAAAAAA)
-    } else {
-        if (_chatDark) Color(0xFF8A8A9A) else Color(0xFF555555)
-    }
+    val dateFormat = remember { java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = IGSurface,
+        title = { Text("Search messages", color = IGPrimary) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it.take(200) },
+                    label = { Text("Keyword") },
+                    leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+                if (term.isNotBlank() && results.isEmpty()) {
+                    Text("No matches in loaded messages.", color = IGSecondary)
+                }
+                LazyColumn(Modifier.heightIn(max = 240.dp)) {
+                    items(results, key = { it.chatKey }) { message ->
+                        Column(
+                            Modifier.fillMaxWidth().clickable { onSelect(message.chatKey) }.padding(vertical = 9.dp),
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Text(message.preview(), color = IGPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                "${message.senderAlias} · ${dateFormat.format(java.util.Date(message.sentAt))}",
+                                color = IGSecondary, fontSize = 11.sp
+                            )
+                        }
+                        HorizontalDivider(color = IGDivider)
+                    }
+                }
+                if (canLoadEarlier) {
+                    TextButton(onClick = onLoadEarlier, enabled = !loadingEarlier) {
+                        Text(if (loadingEarlier) "Loading earlier messages…" else "Load earlier messages")
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done", color = IGChatAccent) } }
+    )
+}
+
+@Composable
+fun ReplyQuoteCard(alias: String, snippet: String, isMine: Boolean, onClick: (() -> Unit)? = null) {
     Row(
         Modifier
-            .widthIn(max = 260.dp)
-            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp, bottomStart = 4.dp, bottomEnd = 4.dp))
-            .background(bgColor)
+            .widthIn(max = 278.dp)
+            .clip(RoundedCornerShape(9.dp))
+            .background(if (isMine) IGSentBg else IGFieldBg)
+            .then(if (onClick != null) Modifier.clickable(onClickLabel = "Go to quoted message", onClick = onClick) else Modifier)
     ) {
-        Box(Modifier.width(3.dp).height(42.dp).background(accentColor))
+        Box(Modifier.width(3.dp).height(42.dp).background(IGChatAccent))
         Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-            Text(alias, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = accentColor, maxLines = 1)
+            Text(alias, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = IGChatAccent, maxLines = 1)
             Text(
                 if (snippet.isEmpty()) "…" else snippet,
-                fontSize = 11.sp, color = subColor, maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                fontSize = 11.sp, color = IGSecondary, maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -2527,7 +2663,7 @@ private fun WhisperInviteBubble(
 ) {
     // Whisper accent palette (matches Whisper lobby)
     val bgActive  = Color(0xFF2A2440)
-    val bgClosed  = if (_chatDark) Color(0xFF1C1C24) else Color(0xFFF0F0F5)
+    val bgClosed  = if (chatDark) Color(0xFF1C1C24) else Color(0xFFF0F0F5)
     val accentV   = Color(0xFF8B7FE0)
 
     // Use the full message text to extract roomId for liveness check

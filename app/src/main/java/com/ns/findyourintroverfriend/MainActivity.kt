@@ -27,6 +27,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.ns.findyourintroverfriend.notifications.VeilMessagingService
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.crashlytics.FirebaseCrashlytics
@@ -36,6 +37,7 @@ import com.ns.findyourintroverfriend.util.RateAppManager
 import com.ns.findyourintroverfriend.billing.VeilBillingClient
 import com.ns.findyourintroverfriend.data.GroupFields
 import com.ns.findyourintroverfriend.navigation.VeilNavGraph
+import com.ns.findyourintroverfriend.report.showSafetyAccountRestriction
 import com.ns.findyourintroverfriend.navigation.VeilRoute
 import com.ns.findyourintroverfriend.notifications.VeilNotifier
 import com.ns.findyourintroverfriend.ui.theme.VeilTheme
@@ -56,6 +58,10 @@ import kotlinx.coroutines.delay
 class MainActivity : ComponentActivity() {
 
     // ── Holds intents that arrive while the app is already running (onNewIntent) ─
+    private val pushAuthListener = FirebaseAuth.AuthStateListener { auth ->
+        auth.currentUser?.uid?.let { uid -> VeilMessagingService.registerCurrentToken(uid) }
+    }
+
     private val _pendingIntent = MutableStateFlow<Intent?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -103,6 +109,10 @@ class MainActivity : ComponentActivity() {
                     com.ns.findyourintroverfriend.notifications.VeilMessagingService.EXTRA_ROOM_ID)
             else null
 
+        if (intent?.hasExtra(VeilMessagingService.EXTRA_GROUP_CHAT_ROOM) == true) {
+            _pendingIntent.value = intent
+        }
+
         enableEdgeToEdge()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
@@ -112,10 +122,11 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             VeilTheme {
+                if (showSafetyAccountRestriction()) return@VeilTheme
                 // ── React to new intents from notification taps while app is open ───
                 val pendingIntent by _pendingIntent.collectAsState()
                 val navControllerRef = remember { androidx.compose.runtime.mutableStateOf<androidx.navigation.NavController?>(null) }
-                LaunchedEffect(pendingIntent) {
+                LaunchedEffect(pendingIntent, navControllerRef.value) {
                     val ni = pendingIntent ?: return@LaunchedEffect
                     val ctrl = navControllerRef.value ?: return@LaunchedEffect
                     val EXTRA_OPEN_DM = com.ns.findyourintroverfriend.notifications.VeilMessagingService.EXTRA_OPEN_DM
@@ -123,6 +134,17 @@ class MainActivity : ComponentActivity() {
                     val EXTRA_VOICE = com.ns.findyourintroverfriend.notifications.VeilMessagingService.EXTRA_OPEN_VOICE_ROOM
                     val EXTRA_ROOM_ID = com.ns.findyourintroverfriend.notifications.VeilMessagingService.EXTRA_ROOM_ID
                     when {
+                        ni.hasExtra(VeilMessagingService.EXTRA_GROUP_CHAT_ROOM) -> {
+                            val roomId = ni.getStringExtra(VeilMessagingService.EXTRA_GROUP_CHAT_ROOM)
+                            val recipient = ni.getStringExtra(VeilMessagingService.EXTRA_GROUP_CHAT_RECIPIENT)
+                            if (roomId != null && roomId.matches(Regex("[A-Za-z0-9_-]{1,128}")) &&
+                                recipient != null && FirebaseAuth.getInstance().currentUser?.uid == recipient &&
+                                ctrl.currentDestination?.route != VeilRoute.AUTH &&
+                                ctrl.currentDestination?.route != VeilRoute.PROFILE_SETUP
+                            ) {
+                                ctrl.navigate(VeilRoute.groupChatRoom(roomId)) { launchSingleTop = true }
+                            }
+                        }
                         ni.getBooleanExtra(EXTRA_OPEN_DM, false) -> {
                             val matchId = ni.getStringExtra(EXTRA_MATCH_ID)
                             if (!matchId.isNullOrBlank()) {
@@ -276,6 +298,11 @@ class MainActivity : ComponentActivity() {
         _pendingIntent.value = intent
     }
 
+    override fun onStart() {
+        super.onStart()
+        FirebaseAuth.getInstance().addAuthStateListener(pushAuthListener)
+    }
+
     override fun onResume() {
         super.onResume()
         com.ns.findyourintroverfriend.notifications.ActiveChatTracker.isAppForeground = true
@@ -285,6 +312,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        FirebaseAuth.getInstance().removeAuthStateListener(pushAuthListener)
         super.onStop()
         com.ns.findyourintroverfriend.notifications.ActiveChatTracker.isAppForeground = false
         PresenceManager.goOffline()

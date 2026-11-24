@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.net.URI
 
 plugins {
     alias(libs.plugins.android.application)
@@ -7,6 +8,18 @@ plugins {
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
     id("com.google.firebase.firebase-perf")   // performance monitoring gradle plugin
+}
+
+val veilWorldUrl = providers.gradleProperty("veilWorldOnlineUrl").orElse("").get().trim()
+val veilWorldEndpoint = if (veilWorldUrl.isEmpty()) null else URI(veilWorldUrl)
+require(veilWorldEndpoint == null || (veilWorldEndpoint.scheme == "wss" &&
+    veilWorldEndpoint.host != null && veilWorldEndpoint.userInfo == null &&
+    veilWorldEndpoint.query == null && veilWorldEndpoint.fragment == null)) {
+    "veilWorldOnlineUrl must be a wss:// server address without credentials, query, or fragment"
+}
+val groupPushRelay = providers.gradleProperty("veilGroupPushUrl").orElse("").get().trim()
+require(groupPushRelay.isEmpty() || groupPushRelay.matches(Regex("https://[A-Za-z0-9.-]+(?::[0-9]+)?/group-message"))) {
+    "veilGroupPushUrl must be an HTTPS URL ending in /group-message"
 }
 
 android {
@@ -31,9 +44,11 @@ android {
         applicationId = "com.ns.findyourintroverfriend"
         minSdk = 28
         targetSdk = 36
-        versionCode = 33
-        versionName = "1.17.3"
-
+        versionCode = 37
+        versionName = "1.17.7"
+        buildConfigField("String", "VEIL_WORLD_HOST", "\"\"")
+        buildConfigField("String", "VEIL_WORLD_ONLINE_URL", "\"$veilWorldUrl\"")
+        buildConfigField("String", "GROUP_PUSH_RELAY_URL", "\"$groupPushRelay\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // OneSignal — free push notification platform
@@ -59,6 +74,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            val worldHost = providers.gradleProperty("veilWorldHost").orElse("").get().trim()
+            require(worldHost.matches(Regex("[0-9a-fA-F:.]*"))) {
+                "veilWorldHost must be an IPv4 or IPv6 address"
+            }
+            buildConfigField("String", "VEIL_WORLD_HOST", "\"$worldHost\"")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -72,6 +94,15 @@ android {
             // Crashlytics still works at runtime; upload mapping manually if needed.
             configure<com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension> {
                 mappingFileUploadEnabled = false
+            }
+        }
+    }
+    sourceSets {
+        for (variant in listOf("debug", "release")) {
+            getByName(variant) {
+                java.srcDir("src/veilWorld/java")
+                assets.srcDir("src/veilWorld/assets")
+                manifest.srcFile("src/veilWorld/AndroidManifest.xml")
             }
         }
     }
@@ -119,6 +150,8 @@ android {
 }
 
 dependencies {
+    implementation("org.godotengine:godot:4.5.2.stable")
+    implementation("androidx.fragment:fragment:1.8.6")
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

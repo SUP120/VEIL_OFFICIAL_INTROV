@@ -2,6 +2,7 @@ package com.ns.findyourintroverfriend.ui.theme
 
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -82,7 +83,10 @@ fun VeilTheme(content: @Composable () -> Unit) {
         }
     }
 
-    CompositionLocalProvider(LocalVeilIsDark provides isDark) {
+    CompositionLocalProvider(
+        LocalVeilIsDark provides isDark,
+        LocalContentColor provides colorScheme.onBackground
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography  = VeilTypography,

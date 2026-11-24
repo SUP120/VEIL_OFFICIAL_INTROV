@@ -224,10 +224,20 @@ class FeedApproachViewModel : ViewModel() {
             try {
                 val docId  = "${uid}_${toUid}"
                 val docRef = db.collection("friendApproaches").document(docId)
-                if (docRef.get().await().exists()) { _result.value = ApproachResult.Sent; return@launch }
+                val existing = docRef.get().await()
+                if (existing.exists()) {
+                    _myApproaches.value = _myApproaches.value + toUid
+                    if (existing.getString("status") == "accepted") {
+                        _myFollowing.value = _myFollowing.value + toUid
+                    }
+                    _result.value = ApproachResult.Sent
+                    return@launch
+                }
 
                 // Connect is free — no quota, no cookie cost
                 docRef.set(buildApproachMap(toUid, toAlias, myAlias, myAvatar, myPhotoUrl)).await()
+                _myApproaches.value = _myApproaches.value + toUid
+                _result.value = ApproachResult.Sent
 
                 runCatching {
                     db.collection("users").document(toUid)
@@ -236,7 +246,6 @@ class FeedApproachViewModel : ViewModel() {
                 }
 
                 notifyApproach(toUid, myAlias)
-                _result.value = ApproachResult.Sent
             } catch (e: Exception) {
                 Log.e("ApproachVM", e.message ?: "")
                 _result.value = ApproachResult.Error(e.message ?: "Failed")

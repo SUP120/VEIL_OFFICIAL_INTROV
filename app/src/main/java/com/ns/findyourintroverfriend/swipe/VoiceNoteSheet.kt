@@ -268,54 +268,145 @@ fun VoiceNoteRecorderSheet(
 //  Player Bubble
 // ─────────────────────────────────────────────────────────────────────────────
 
+@Stable
+internal class VoiceNotePlayback {
+    private var player: MediaPlayer? = null
+    var url by mutableStateOf<String?>(null)
+        private set
+    var loading by mutableStateOf(false)
+        private set
+    var playing by mutableStateOf(false)
+        private set
+    var failed by mutableStateOf(false)
+        private set
+
+    fun toggle(source: String) {
+        if (source == url && loading) return
+        if (source == url && player != null) {
+            try {
+                if (playing) pause()
+                else {
+                    player?.start()
+                    playing = true
+                }
+            } catch (_: IllegalStateException) {
+                stop()
+                failed = true
+            }
+            return
+        }
+
+        stop()
+        url = source
+        loading = true
+        try {
+            val next = MediaPlayer()
+            player = next
+            next.setAudioAttributes(
+                android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            next.setOnPreparedListener {
+                if (it === player) {
+                    loading = false
+                    it.start()
+                    playing = true
+                }
+            }
+            next.setOnCompletionListener {
+                if (it === player) {
+                    playing = false
+                    it.seekTo(0)
+                }
+            }
+            next.setOnErrorListener { current, _, _ ->
+                if (current === player) {
+                    stop()
+                    failed = true
+                }
+                true
+            }
+            next.setDataSource(source)
+            next.prepareAsync()
+        } catch (_: Exception) {
+            stop()
+            failed = true
+        }
+    }
+
+    fun pause() {
+        if (loading) stop()
+        if (playing) {
+            try {
+                player?.pause()
+                playing = false
+            } catch (_: IllegalStateException) {
+                stop()
+            }
+        }
+    }
+
+    fun stop() {
+        val current = player
+        player = null
+        current?.release()
+        loading = false
+        playing = false
+        failed = false
+    }
+}
+
 @Composable
-fun VoiceNotePlayerBubble(url: String, durationSec: Int, mine: Boolean) {
-    var isPlaying by remember { mutableStateOf(false) }
-    var player    by remember { mutableStateOf<MediaPlayer?>(null) }
-
-    DisposableEffect(url) { onDispose { player?.release() } }
-
+internal fun VoiceNotePlayerBubble(
+    url: String,
+    durationSec: Int,
+    playback: VoiceNotePlayback,
+    bubbleColor: Color,
+    textColor: Color,
+    accent: Color
+) {
+    val current = playback.url == url
+    val loading = current && playback.loading
+    val playing = current && playback.playing
+    val failed = current && playback.failed
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier
             .widthIn(max = 220.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(if (mine) Color(0xFF000000) else Color(0xFFF0F0F0))
-            .padding(horizontal = 14.dp, vertical = 12.dp)
+            .background(bubbleColor)
+            .padding(start = 6.dp, end = 16.dp, top = 4.dp, bottom = 4.dp)
     ) {
-        Box(
-            Modifier.size(38.dp).clip(CircleShape)
-                .background(if (mine) Color.White.copy(0.18f) else Color(0xFFE0E0E0))
-                .clickable {
-                    if (isPlaying) {
-                        player?.pause(); isPlaying = false
-                    } else {
-                        try {
-                            if (player == null) {
-                                player = MediaPlayer().apply {
-                                    setDataSource(url)
-                                    setOnCompletionListener { isPlaying = false; it.seekTo(0) }
-                                    prepare()
-                                }
-                            }
-                            player?.start(); isPlaying = true
-                        } catch (_: Exception) {}
-                    }
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                null, tint = if (mine) Color.White else Color.Black,
-                modifier = Modifier.size(20.dp)
-            )
+        IconButton(onClick = { playback.toggle(url) }, enabled = !loading) {
+            if (loading) {
+                CircularProgressIndicator(Modifier.size(18.dp), color = accent, strokeWidth = 2.dp)
+            } else {
+                Icon(
+                    when {
+                        failed -> Icons.Rounded.Refresh
+                        playing -> Icons.Rounded.Pause
+                        else -> Icons.Rounded.PlayArrow
+                    },
+                    contentDescription = when {
+                        failed -> "Retry voice note"
+                        playing -> "Pause voice note"
+                        else -> "Play voice note"
+                    },
+                    tint = accent
+                )
+            }
         }
         Column {
-            Text("Voice Note", fontWeight = FontWeight.SemiBold, fontSize = 12.sp,
-                color = if (mine) Color.White else Color.Black)
-            Text("%d:%02d".format(durationSec / 60, durationSec % 60),
-                fontSize = 11.sp, color = if (mine) Color.White.copy(0.65f) else Color(0xFF737373))
+            Text("Voice note", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = textColor)
+            val subtitle = when {
+                failed -> "Couldn’t play"
+                loading -> "Loading…"
+                else -> "%d:%02d".format(durationSec / 60, durationSec % 60)
+            }
+            Text(subtitle, fontSize = 11.sp, color = textColor.copy(alpha = 0.75f))
         }
     }
 }

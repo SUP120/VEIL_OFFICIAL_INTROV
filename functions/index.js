@@ -1,13 +1,18 @@
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, Timestamp, FieldValue } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
-const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onRequest, onCall } = require("firebase-functions/v2/https");
 const { logger } = require("firebase-functions");
 const https = require("https");
+const { isId, makeGroupPushData, groupPushAllowed } = require("./groupPushPayload");
 
 initializeApp();
+
+const { submitSafetyEntry, reviewSafetyReport } = require("./safety");
+exports.submitSafetyEntry = submitSafetyEntry;
+exports.reviewSafetyReport = reviewSafetyReport;
 
 // ── VEIL Friends — AI Chat Gateway ────────────────────────────────────────
 // Loaded from separate file to keep index.js clean.
@@ -19,6 +24,51 @@ exports.aiFriendChat = aiFriendChat;
 
 const db = getFirestore();
 const fcm = getMessaging();
+
+exports.notifyGroupChatMessage = onDocumentCreated({
+    document: "group_rooms/{roomId}/messages/{messageId}",
+    region: "asia-south1",
+}, async (event) => {
+    const message = event.data?.data();
+    if (!isId(message?.uid) || message.pushViaRelay === true ||
+        typeof message.text !== "string" || !message.text.trim()) return;
+    const { roomId, messageId } = event.params;
+    const roomRef = db.collection("group_rooms").doc(roomId);
+    const room = (await roomRef.get()).data();
+    if (!Array.isArray(room?.memberUids) || !room.memberUids.includes(message.uid)) return;
+    const replyAuthor = isId(message.replyToId)
+        ? (await roomRef.collection("messages").doc(message.replyToId).get()).get("uid")
+        : null;
+    const sentAt = message.sentAt?.toMillis?.() ?? Date.now();
+
+    const recipients = [...new Set(room.memberUids)].filter((uid) =>
+        isId(uid) && uid !== message.uid
+    );
+    for (let index = 0; index < recipients.length; index += 100) {
+        const batch = recipients.slice(index, index + 100);
+        const deliveries = await Promise.all(batch.map(async (uid) => {
+            const [device, preferences, outgoingBlock, incomingBlock] = await db.getAll(
+                db.collection("group_push_devices").doc(uid),
+                db.collection("users").doc(uid).collection("group_chat_state").doc(roomId),
+                db.collection("userBlocks").doc(uid).collection("blocked").doc(message.uid),
+                db.collection("userBlocks").doc(message.uid).collection("blocked").doc(uid),
+            );
+            const token = device.get("token");
+            if (typeof token !== "string" || !token
+                || !groupPushAllowed(preferences.get("notificationMode"), uid, replyAuthor, incomingBlock.exists, outgoingBlock.exists)) return null;
+            return {
+                token,
+                data: makeGroupPushData(roomId, room, messageId, message, uid, sentAt),
+                android: { priority: "high", ttl: 600000 },
+            };
+        }));
+        const messages = deliveries.filter(Boolean);
+        if (messages.length > 0) {
+            const result = await fcm.sendEach(messages);
+            if (result.failureCount) logger.warn("Some group chat notifications failed", { roomId, failures: result.failureCount });
+        }
+    }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  CASHFREE CONFIG

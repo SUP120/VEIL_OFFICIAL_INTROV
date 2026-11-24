@@ -165,7 +165,7 @@ fun MatchesScreen(
                     loading       = loading,
                     lastMessages  = lastMessages,
                     unreadMatchIds= unreadMatchIds,
-                    onOpenMatch   = { id -> vm.markMatchRead(id); onOpenMatch(id) }
+                    onOpenMatch   = onOpenMatch
                 )
                 2 -> MComplimentsTab(
                     received    = compliments,

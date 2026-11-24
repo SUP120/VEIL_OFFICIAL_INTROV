@@ -12,6 +12,9 @@ object VeilRoute {
     const val PROFILE_THEMES = "profile_themes" // Premium avatar frame purchase
     const val ACTIVE_ROOMS    = "active_rooms"    // Live viewer — all currently active groups
     const val VEIL_HOME      = "veil_home"       // Home screen — find new rooms / leave room
+    const val HELP_SAFETY = "help_safety"
+    const val PEOPLE = "people"
+    const val SAFETY_MODERATION = "safety_moderation"
     const val QUESTION_CARD  = "question_card"
     const val ANSWER_CARD    = "answer_card"
     const val INBOX                = "inbox"

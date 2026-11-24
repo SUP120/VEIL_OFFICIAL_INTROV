@@ -40,6 +40,8 @@ import com.ns.findyourintroverfriend.question.QuestionCardScreen
 import com.ns.findyourintroverfriend.reveal.RevealCeremonyScreen
 import com.ns.findyourintroverfriend.waiting.WaitingRoomScreen
 import com.ns.findyourintroverfriend.admin.AdminDashboardScreen
+import com.ns.findyourintroverfriend.report.HelpSafetyScreen
+import com.ns.findyourintroverfriend.report.SafetyModerationScreen
 import com.ns.findyourintroverfriend.aesthetics.AestheticsFeedScreen
 import com.ns.findyourintroverfriend.vibes.VibesScreen
 import com.ns.findyourintroverfriend.day2.DareToShareScreen
@@ -64,8 +66,7 @@ import com.ns.findyourintroverfriend.voiceroom.VoiceRoomActiveScreen
 import com.ns.findyourintroverfriend.voiceroom.VoiceRoomViewModel
 import com.ns.findyourintroverfriend.groupchat.GroupRoomsScreen
 import com.ns.findyourintroverfriend.groupchat.GroupChatRoomScreen
-import com.ns.findyourintroverfriend.aifriend.VeilFriendsScreen
-import com.ns.findyourintroverfriend.aifriend.AiFriendChatScreen
+import com.ns.findyourintroverfriend.aifriend.VeilFriendsLockedScreen
 
 
 @Composable
@@ -282,9 +283,9 @@ fun VeilNavGraph(navController: NavHostController, startDestination: String) {
                 onNavigateDrawGuess = {
                     navController.navigate(VeilRoute.DRAW_GUESS_PUBLIC)
                 },
-                onOpenVeilFriends = {
-                    navController.navigate(VeilRoute.VEIL_FRIENDS)
-                },
+                onOpenVeilFriends = { navController.navigate(VeilRoute.VEIL_FRIENDS) },
+                onOpenHelpSafety = { navController.navigate(VeilRoute.HELP_SAFETY) },
+                onOpenPeople = { navController.navigate(VeilRoute.PEOPLE) },
                 onLogout = {
                     com.ns.findyourintroverfriend.notifications.VeilNotifier.unregisterUser()
                     com.google.firebase.auth.FirebaseAuth.getInstance().signOut()
@@ -302,7 +303,21 @@ fun VeilNavGraph(navController: NavHostController, startDestination: String) {
 
         composable(VeilRoute.FEED) {
             com.ns.findyourintroverfriend.feed.FeedScreen(
-                onOpenDms = { navController.navigate(VeilRoute.FEED_DM_INBOX) }
+                onOpenDms = { navController.navigate(VeilRoute.FEED_DM_INBOX) },
+                onOpenPeople = { navController.navigate(VeilRoute.PEOPLE) },
+                onOpenUserProfile = { uid -> navController.navigate("user_profile/$uid") }
+            )
+        }
+
+        composable(
+            route = "${VeilRoute.PEOPLE}?editUsername={editUsername}",
+            arguments = listOf(navArgument("editUsername") { type = NavType.BoolType; defaultValue = false })
+        ) { back ->
+            com.ns.findyourintroverfriend.feed.PeopleDirectoryScreen(
+                onBack = { navController.popBackStack() },
+                onOpenProfile = { uid -> navController.navigate("user_profile/$uid") },
+                onOpenChat = { matchId -> navController.navigate("${VeilRoute.CONNECTION_ROOM}/$matchId") },
+                openSettingsOnStart = back.arguments?.getBoolean("editUsername") == true
             )
         }
 
@@ -516,7 +531,19 @@ fun VeilNavGraph(navController: NavHostController, startDestination: String) {
 
         // ── Admin Dashboard (restricted) ───────────────────────────────────────
         composable(VeilRoute.ADMIN_DASHBOARD) {
-            AdminDashboardScreen(onBack = { navController.popBackStack() })
+            AdminDashboardScreen(
+                onBack = { navController.popBackStack() },
+                onOpenSafety = { navController.navigate(VeilRoute.SAFETY_MODERATION) }
+            )
+        }
+
+        composable(VeilRoute.HELP_SAFETY) {
+            HelpSafetyScreen(onBack = { navController.popBackStack() },
+                onOpenModeration = { navController.navigate(VeilRoute.SAFETY_MODERATION) })
+        }
+
+        composable(VeilRoute.SAFETY_MODERATION) {
+            SafetyModerationScreen(onBack = { navController.popBackStack() })
         }
 
         // ── Profile Themes — premium avatar frames ────────────────────────────
@@ -805,12 +832,7 @@ fun VeilNavGraph(navController: NavHostController, startDestination: String) {
 
         // ── VEIL Friends — AI Companion Home ───────────────────────────────
         composable(VeilRoute.VEIL_FRIENDS) {
-            VeilFriendsScreen(
-                onBack       = { navController.popBackStack() },
-                onOpenFriend = { friendId ->
-                    navController.navigate(VeilRoute.aiFriendChat(friendId))
-                }
-            )
+            VeilFriendsLockedScreen(onBack = { navController.popBackStack() })
         }
 
         // ── VEIL Friends — AI Chat ─────────────────────────────────────────
@@ -820,14 +842,8 @@ fun VeilNavGraph(navController: NavHostController, startDestination: String) {
                 navArgument("friendId")       { type = NavType.StringType },
                 navArgument("conversationId") { type = NavType.StringType; defaultValue = "new" }
             )
-        ) { back ->
-            val friendId       = back.arguments?.getString("friendId")       ?: ""
-            val conversationId = back.arguments?.getString("conversationId") ?: "new"
-            AiFriendChatScreen(
-                friendId       = friendId,
-                conversationId = conversationId,
-                onBack         = { navController.popBackStack() }
-            )
+        ) {
+            VeilFriendsLockedScreen(onBack = { navController.popBackStack() })
         }
     }
 }

@@ -30,6 +30,7 @@ class VeilApplication : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        if (Application.getProcessName() == "$packageName:veil_world") return
 
         // ── Firebase Crashlytics ───────────────────────────────────────────────
         // Automatically logs crashes to Firebase Console.

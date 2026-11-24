@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-feature android:name="android.hardware.screen.landscape" android:required="false" />
+    <application>
+        <activity
+            android:name=".world.VeilWorldActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
+            android:exported="false"
+            android:process=":veil_world"
+            android:screenOrientation="sensorLandscape" />
+
+        <!-- VEIL World loads an internal pack without Godot's file-sharing provider. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            tools:node="remove"
+            tools:selector="org.godotengine.godot" />
+    </application>
+</manifest>

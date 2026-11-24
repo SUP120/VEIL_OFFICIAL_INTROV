@@ -117,7 +117,7 @@ enum class RoomPhase {
 data class VoiceRoomActiveUiState(
     val room               : VoiceRoom?          = null,
     val phase              : RoomPhase           = RoomPhase.CONNECTING,
-    val isMuted            : Boolean             = false,
+    val isMuted            : Boolean             = true,
     val remainingSecs      : Long                = WHISPER_FREE_MINS * 60L,
     val activeSpeakers     : Set<String>         = emptySet(),
     // Real display names fetched from Firestore

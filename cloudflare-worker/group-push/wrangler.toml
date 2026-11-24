@@ -1,0 +1,8 @@
+name = "veil-group-push"
+main = "worker.mjs"
+compatibility_date = "2026-11-23"
+
+[vars]
+PROJECT_ID = "introver-match-app"
+PROJECT_NUMBER = "202022157666"
+ANDROID_APP_ID = "1:202022157666:android:653ba4d940b7f7430a803b"

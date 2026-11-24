@@ -396,7 +396,8 @@ class AdminViewModel : ViewModel() {
 @Composable
 fun AdminDashboardScreen(
     vm: AdminViewModel = viewModel(),
-    onBack: () -> Unit = {}
+    onBack: () -> Unit = {},
+    onOpenSafety: () -> Unit = {}
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
 
@@ -465,6 +466,8 @@ fun AdminDashboardScreen(
                         }
 
                         Spacer(Modifier.weight(1f))
+
+                        TextButton(onClick = onOpenSafety) { Text("Safety queue", color = txtP) }
 
                         // Refresh
                         Box(

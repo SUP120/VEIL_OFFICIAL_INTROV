@@ -26,6 +26,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ns.findyourintroverfriend.util.LocalVeilIsDark
 import com.ns.findyourintroverfriend.util.VeilThemeManager
 import com.ns.findyourintroverfriend.voiceroom.VoiceRoomViewModel
+import com.ns.findyourintroverfriend.world.WorldPreviewCard
 
 // -- Dark-mode state ---------------------------------------------------------
 private var _gameDark by mutableStateOf(VeilThemeManager.initialResolvedDark)
@@ -343,6 +344,8 @@ private fun CategoriesScreen(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            WorldPreviewCard(dark = dark, onOpenWhisper = onOpenVoiceRooms)
+
             // Section label
             Text(
                 "LIVE SPACES",

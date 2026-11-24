@@ -36,6 +36,7 @@ class SwipeViewModel : ViewModel() {
 
     private val _feed         = MutableStateFlow<List<SwipeProfile>>(emptyList())
     val feed: StateFlow<List<SwipeProfile>> = _feed.asStateFlow()
+    private var discoveryGeneration = 0
 
     private val _match        = MutableStateFlow<SwipeMatch?>(null)
     val match: StateFlow<SwipeMatch?> = _match.asStateFlow()
@@ -207,7 +208,9 @@ class SwipeViewModel : ViewModel() {
 
     // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Load feed ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â all profiles, fully client-side filtered ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
     private fun loadFeed(myGender: String) {
-        val myCountry = _myProfile.value?.country ?: ""
+        val generation = ++discoveryGeneration
+        val myProfile = _myProfile.value
+        val myCountry = myProfile?.country.orEmpty()
         viewModelScope.launch {
             // Already-swiped UIDs (safe ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â empty if rules deny)
             val alreadySwiped: Set<String> = try {
@@ -215,29 +218,36 @@ class SwipeViewModel : ViewModel() {
                     .get().await().documents.map { it.id }.toSet()
             } catch (_: Exception) { emptySet() }
 
-            // Query ALL swipeProfiles ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no whereEqualTo so no index/case issues
-            val firestoreProfiles: List<SwipeProfile> = try {
-                db.collection("swipeProfiles")
-                    .limit(80).get().await()
-                    .documents.mapNotNull { doc ->
-                        val raw = doc.toObject(SwipeProfile::class.java) ?: return@mapNotNull null
-                        // Same Kotlin Boolean 'is' prefix fix — read directly from document snapshot
-                        raw.copy(
-                            isCameraShy      = doc.getBoolean("isCameraShy")      ?: false,
-                            isProfileComplete = doc.getBoolean("isProfileComplete") ?: false
-                        )
-                    }
-                    .filter { p ->
-                        p.uid != uid &&
-                        !p.uid.startsWith("demo_") &&
-                        p.uid !in alreadySwiped &&
-                        p.alias.isNotBlank() &&
-                        (myCountry.isBlank() || p.country.isBlank() || p.country == myCountry)
-                    }
-                    .sortedByDescending { it.lastActive }
-            } catch (_: Exception) { emptyList() }
-
-
+            val profiles = db.collection("swipeProfiles")
+            val hobbies = myProfile?.hobbies.orEmpty().filter { it.isNotBlank() }.distinct().take(10)
+            val interestDocs = if (hobbies.isEmpty()) emptyList() else try {
+                profiles.whereArrayContainsAny("hobbies", hobbies).limit(24).get().await().documents
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                emptyList()
+            }
+            val generalDocs = try {
+                profiles.limit(80L - interestDocs.size).get().await().documents
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (e: Exception) {
+                emptyList()
+            }
+            val firestoreProfiles = (interestDocs + generalDocs).distinctBy { it.id }.mapNotNull { doc ->
+                runCatching {
+                    doc.toObject(SwipeProfile::class.java)?.copy(
+                        isCameraShy = doc.getBoolean("isCameraShy") ?: false,
+                        isProfileComplete = doc.getBoolean("isProfileComplete") ?: false
+                    )
+                }.getOrNull()
+            }.filter { profile ->
+                profile.uid != uid &&
+                    !profile.uid.startsWith("demo_") &&
+                    profile.uid !in alreadySwiped &&
+                    profile.alias.isNotBlank() &&
+                    (myCountry.isBlank() || profile.country.isBlank() || profile.country == myCountry)
+            }
             // Gender filter: show opposite gender (or any if gender not set)
             val targetGender = when (myGender.lowercase()) {
                 "male"   -> "female"
@@ -248,8 +258,28 @@ class SwipeViewModel : ViewModel() {
             else firestoreProfiles.filter {
                 it.gender.lowercase() == targetGender || it.gender.isBlank()
             }
-            _feed.value = filtered.distinctBy { it.uid }
+            val now = System.currentTimeMillis()
+            if (discoveryGeneration != generation) return@launch
+            _feed.value = filtered.distinctBy { it.uid }.sortedByDescending { candidate ->
+                val overlap = myProfile?.let { recommendationOverlap(it, candidate) } ?: 0.0
+                val lastSeen = maxOf(candidate.lastActive, candidate.lastActiveTime)
+                val ageDays = (now - lastSeen).coerceAtLeast(0L) / 86_400_000.0
+                overlap + 2.0 / (1.0 + ageDays / 4.0)
+            }
         }
+    }
+
+    private fun recommendationOverlap(own: SwipeProfile, candidate: SwipeProfile): Double {
+        fun shared(a: List<String>, b: List<String>): Int {
+            val left = a.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toSet()
+            val right = b.map { it.trim().lowercase() }.toSet()
+            return left.intersect(right).size.coerceAtMost(3)
+        }
+        return shared(own.hobbies, candidate.hobbies) * 1.6 +
+            shared(own.introvertTags, candidate.introvertTags) +
+            shared(own.preferredTimeSlots, candidate.preferredTimeSlots) * 0.5 +
+            (if (own.commStyle.isNotBlank() && own.commStyle == candidate.commStyle) 0.8 else 0.0) +
+            (if (own.placePreference.isNotBlank() && own.placePreference == candidate.placePreference) 0.4 else 0.0)
     }
 
     fun swipeRight(target: SwipeProfile) {
@@ -303,7 +333,11 @@ class SwipeViewModel : ViewModel() {
                 
                 // 2. Update swipe counter
                 db.collection("swipeProfiles").document(uid).update(
-                    mapOf("dailySwipesUsed" to FieldValue.increment(1), "dailySwipesResetDate" to today)
+                    mapOf(
+                        "dailySwipesUsed" to FieldValue.increment(1),
+                        "dailySwipesResetDate" to today,
+                        "lastActive" to System.currentTimeMillis()
+                    )
                 ).await()
                 
                 // 3. Send like notification to target
@@ -333,7 +367,8 @@ class SwipeViewModel : ViewModel() {
                 db.collection("swipeProfiles").document(uid).update(
                     mapOf(
                         "dailySwipesUsed"      to FieldValue.increment(1),
-                        "dailySwipesResetDate" to today
+                        "dailySwipesResetDate" to today,
+                        "lastActive" to System.currentTimeMillis()
                     )
                 ).await()
                 _swipesLeft.value = (_swipesLeft.value - 1).coerceAtLeast(0)
@@ -411,7 +446,8 @@ class SwipeViewModel : ViewModel() {
                 db.collection("swipeProfiles").document(uid).set(
                     mapOf(
                         "dailyComplimentsUsed" to FieldValue.increment(1),
-                        "dailyComplimentsDate" to today
+                        "dailyComplimentsDate" to today,
+                        "lastActive" to System.currentTimeMillis()
                     ),
                     com.google.firebase.firestore.SetOptions.merge()
                 ).await()

@@ -1,6 +1,10 @@
 package com.ns.findyourintroverfriend.feed
 
 import android.net.Uri
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -20,6 +24,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,6 +41,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -43,6 +52,8 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -52,6 +63,8 @@ import com.ns.findyourintroverfriend.util.VeilSafetyUtil
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import com.ns.findyourintroverfriend.util.LocalVeilIsDark
 import com.ns.findyourintroverfriend.util.VeilThemeManager
 
@@ -64,16 +77,16 @@ private var _fsDark by mutableStateOf(VeilThemeManager.initialResolvedDark)
 // ── Peaceful Serenity Palette ─────────────────────────────────────────────────
 // Light: warm parchment backgrounds, dusty mauve accents, sage green, soft stone text
 // Dark: deep ink with gentle warm tones
-private val IGBg         get() = if (_fsDark) Color(0xFF0F0F14) else Color(0xFFFBF8F4)   // warm parchment / deep ink
+private val IGBg         get() = if (_fsDark) Color(0xFF0F0F14) else Color(0xFFFAF5F2)   // warm parchment / deep ink
 private val IGCard        get() = if (_fsDark) Color(0xFF17171E) else Color(0xFFFFFFFF)   // pure card surface
 private val IGSurface     get() = if (_fsDark) Color(0xFF1E1E27) else Color(0xFFF5F2EE)   // subtle tinted surface
 private val IGBlack       get() = if (_fsDark) Color(0xFFE0DDD8) else Color(0xFF2C2825)   // warm near-black
-private val IGGray        get() = if (_fsDark) Color(0xFF918E8A) else Color(0xFF9A9490)   // warm stone gray
+private val IGGray        get() = if (_fsDark) Color(0xFF918E8A) else Color(0xFF685C66)   // warm stone gray
 private val IGMuted       get() = if (_fsDark) Color(0xFF5A5855) else Color(0xFFC4BFBA)   // muted warm
 private val IGDivider     get() = if (_fsDark) Color(0xFF232328) else Color(0xFFEDE9E4)   // hairline divider
 private val IGBorderSoft  get() = if (_fsDark) Color(0xFF2C2C34) else Color(0xFFE8E3DC)   // card border
 // Accent: dusty mauve/rose — calm, feminine, introverted
-private val IGAccent      = Color(0xFFA07C8C)   // dusty mauve
+private val IGAccent      get() = if (_fsDark) Color(0xFFE8A9C9) else Color(0xFF985778)   // dusty mauve
 private val IGAccentSoft  get() = if (_fsDark) Color(0xFF251520) else Color(0xFFF7EFF3)   // very soft mauve tint
 // Secondary accent: sage green (nature, calm)
 private val IGSage        = Color(0xFF7A9E87)   // sage green
@@ -108,39 +121,106 @@ fun FeedScreen(
     bottomNavPadding : androidx.compose.ui.unit.Dp = 0.dp,
     onOpenDms        : () -> Unit = {},
     onOpenCookieStore: () -> Unit = {},
-    onOpenUserProfile: (uid: String) -> Unit = {}
+    onOpenUserProfile: (uid: String) -> Unit = {},
+    onOpenPeople     : () -> Unit = {}
 ) {
-    val posts          by vm.filteredPosts.collectAsStateWithLifecycle()
+    val posts          by vm.posts.collectAsStateWithLifecycle()
     val loading        by vm.loading.collectAsStateWithLifecycle()
     val isRefreshing   by vm.isRefreshing.collectAsStateWithLifecycle()
     val isLoadingMore  by vm.isLoadingMore.collectAsStateWithLifecycle()
     val hasMore        by vm.hasMore.collectAsStateWithLifecycle()
     val myAlias        by vm.myAlias.collectAsStateWithLifecycle()
     val myPhoto        by vm.myPhoto.collectAsStateWithLifecycle()
+    val myAvatar       by vm.myAvatar.collectAsStateWithLifecycle()
     val cookieBalance  by cookieVm.cookieBalance.collectAsStateWithLifecycle()
     val myApproaches   by approachVm.myApproaches.collectAsStateWithLifecycle()
+    val myFriends      by approachVm.friendChats.collectAsStateWithLifecycle()
     val freeLeft       by approachVm.freeLeft.collectAsStateWithLifecycle()
     val approachResult by approachVm.result.collectAsStateWithLifecycle()
     val savedPostIds   by vm.savedPostIds.collectAsStateWithLifecycle()
-    val selectedTag    by vm.selectedTag.collectAsStateWithLifecycle()
+    val savedLibrary   by vm.savedLibrary.collectAsStateWithLifecycle()
+    val pollVotes      by vm.pollVotes.collectAsStateWithLifecycle()
 
     val pagerState      = rememberPagerState(pageCount = { 2 })
     val scope           = rememberCoroutineScope()
     val postsListState  = rememberLazyListState()
+    val savedListState  = rememberLazyListState()
     val sparksListState = rememberLazyListState()
 
+    val context = LocalContext.current
+    val account = vm.uid
+    val directoryVm: PeopleDirectoryViewModel = viewModel()
+    val suggestedPeople by directoryVm.suggestions.collectAsStateWithLifecycle()
+    val blockedPeople by directoryVm.blocked.collectAsStateWithLifecycle()
+    var sendingSuggestion by remember(account) { mutableStateOf<String?>(null) }
+    val connectedAuthors = remember(account, myFriends) {
+        myFriends.mapTo(mutableSetOf()) { if (it.userA == account) it.userB else it.userA }
+    }
+    val peopleCards = remember(suggestedPeople, blockedPeople, connectedAuthors, account) {
+        suggestedPeople.filter { it.uid != account && it.uid !in blockedPeople && it.uid !in connectedAuthors }.take(6)
+    }
+    LaunchedEffect(account) {
+        directoryVm.syncAccount()
+        directoryVm.loadSuggestions()
+    }
+    LaunchedEffect(connectedAuthors) { vm.setConnectionAuthors(connectedAuthors) }
+    val preferences = remember(context) { context.getSharedPreferences("feed_preferences", Context.MODE_PRIVATE) }
+    val hiddenKey = "hidden_posts_$account"
+    var hiddenPostIds by remember(preferences, hiddenKey) {
+        mutableStateOf(preferences.getStringSet(hiddenKey, emptySet()).orEmpty().toSet())
+    }
+    fun setHiddenPosts(ids: Set<String>) {
+        hiddenPostIds = ids
+        if (account.isNotEmpty()) preferences.edit().putStringSet(hiddenKey, ids).apply()
+    }
+
+    var showSaved by rememberSaveable(account) { mutableStateOf(false) }
+    var showLatest by rememberSaveable(account) { mutableStateOf(false) }
     var showCreate       by remember { mutableStateOf(false) }
     var showSparksCreate by remember { mutableStateOf(false) }
     var commentPost      by remember { mutableStateOf<VeilPost?>(null) }
     var reportTarget     by remember { mutableStateOf<String?>(null) }
+    var editTarget       by remember { mutableStateOf<VeilPost?>(null) }
+    var deleteTarget     by remember { mutableStateOf<VeilPost?>(null) }
     var pendingApproachPost by remember { mutableStateOf<VeilPost?>(null) }
     var showNotifPanel   by remember { mutableStateOf(false) }
 
-    // Collapse tab bar when either feed is scrolled
-    val postsScrolled  = postsListState.firstVisibleItemIndex  > 0 || postsListState.firstVisibleItemScrollOffset  > 40
-    val sparksScrolled = sparksListState.firstVisibleItemIndex > 0 || sparksListState.firstVisibleItemScrollOffset > 40
-    val tabCollapsed   = when (pagerState.currentPage) { 1 -> sparksScrolled; else -> postsScrolled }
     val snackbarHostState = remember { SnackbarHostState() }
+    fun showFeedback(message: String) {
+        scope.launch { snackbarHostState.showSnackbar(message) }
+    }
+    BackHandler(enabled = showSaved && pagerState.currentPage == 0) { showSaved = false }
+    LaunchedEffect(showSaved) { if (showSaved) vm.loadSavedLibrary() }
+    val visiblePosts = remember(showSaved, showLatest, savedLibrary.posts, savedPostIds, hiddenPostIds, blockedPeople, posts) {
+        if (showSaved) savedLibrary.posts.filter { it.postId in savedPostIds }
+        else {
+            val visible = posts.filterNot { it.postId in hiddenPostIds || it.authorUid in blockedPeople }
+            if (showLatest) visible.sortedByDescending { it.createdAt } else visible
+        }
+    }
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        if (!showSaved && pagerState.settledPage == 0 && postsListState.firstVisibleItemIndex <= 1) vm.refreshIfStale()
+    }
+    LaunchedEffect(account, showSaved, pagerState.settledPage) {
+        if (account.isBlank() || showSaved || pagerState.settledPage != 0) return@LaunchedEffect
+        snapshotFlow {
+            val layout = postsListState.layoutInfo
+            val viewport = layout.viewportEndOffset - layout.viewportStartOffset
+            layout.visibleItemsInfo.mapNotNull { item ->
+                val key = item.key as? String ?: return@mapNotNull null
+                if (!key.startsWith("post:") || viewport <= 0 || item.size <= 0) return@mapNotNull null
+                val visibleHeight = minOf(item.offset + item.size, layout.viewportEndOffset) -
+                    maxOf(item.offset, layout.viewportStartOffset)
+                key.removePrefix("post:").takeIf { visibleHeight >= minOf(viewport, item.size) * 0.45 }
+            }.toSet()
+        }.collectLatest { ids ->
+            if (ids.isNotEmpty()) {
+                delay(650)
+                vm.recordViewedPosts(ids)
+            }
+        }
+    }
 
     val unreadCount    by vm.unreadCount.collectAsStateWithLifecycle()
     val notifItems     by vm.notifItems.collectAsStateWithLifecycle()
@@ -156,6 +236,7 @@ fun FeedScreen(
 
     // Handle approach result → show snackbar feedback
     LaunchedEffect(approachResult) {
+        if (approachResult != ApproachResult.Idle) sendingSuggestion = null
         when (val r = approachResult) {
             is ApproachResult.Sent        -> { snackbarHostState.showSnackbar("🤝 Approached!"); approachVm.resetResult() }
             is ApproachResult.NeedCookies -> approachVm.resetResult()  // pendingApproachPost already set in the button's onClick
@@ -169,12 +250,6 @@ fun FeedScreen(
     SideEffect { _fsDark = _veilIsDark }
 
     Box(modifier.fillMaxSize().background(IGBg)) {
-        // Snackbar host at bottom of the main box
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier  = Modifier.align(Alignment.BottomCenter)
-                .padding(bottom = bottomNavPadding + 16.dp)
-        )
         Column(Modifier.fillMaxSize()) {
             // ── Offline banner ────────────────────────────────────────────────
             val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -202,62 +277,38 @@ fun FeedScreen(
                 }
             }
 
-            // ── Top bar — Peaceful, airy, minimal ────────────────────────────
-            Column(
-                Modifier.fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                if (_fsDark) Color(0xFF13131A) else Color(0xFFFEFBF7),
-                                IGBg
-                            )
-                        )
-                    )
-                    .statusBarsPadding()
-            ) {
+            Column(Modifier.fillMaxWidth().background(IGBg).statusBarsPadding()) {
                 Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                        .padding(top = 14.dp, bottom = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Brand — soft editorial wordmark
-                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(7.dp)
-                        ) {
-                            // Tiny accent dot
-                            Box(
-                                Modifier.size(6.dp).clip(CircleShape)
-                                    .background(
-                                        Brush.radialGradient(
-                                            listOf(IGAccent, IGAccent.copy(0.5f))
-                                        )
-                                    )
-                            )
-                            Text(
-                                "Introvert Feed",
-                                fontSize      = 20.sp,
-                                fontWeight    = FontWeight.SemiBold,
-                                color         = IGBlack,
-                                letterSpacing = (-0.4).sp
-                            )
-                        }
-                        Text(
-                            "your quiet space to share",
-                            fontSize      = 10.5.sp,
-                            color         = IGMuted,
-                            letterSpacing = 0.2.sp
-                        )
-                    }
-                    // Action icons — soft, minimal
+                    Text(
+                        "Home", modifier = Modifier.weight(1f), fontSize = 30.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Serif,
+                        fontWeight = FontWeight.SemiBold, color = IGBlack, maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
+                        IconButton(onClick = onOpenPeople, modifier = Modifier.size(40.dp)) {
+                            Icon(Icons.Rounded.PersonSearch, "Find people", tint = IGGray, modifier = Modifier.size(22.dp))
+                        }
+                        IconButton(
+                            onClick = {
+                                showSaved = !showSaved || pagerState.currentPage != 0
+                                if (showSaved) scope.launch { pagerState.animateScrollToPage(0) }
+                            },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                if (showSaved && pagerState.currentPage == 0) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                                if (showSaved && pagerState.currentPage == 0) "Back to feed" else "Saved posts",
+                                tint = if (showSaved && pagerState.currentPage == 0) IGAccent else IGGray,
+                                modifier = Modifier.size(21.dp)
+                            )
+                        }
                         // ── Notification bell ────────────────────────────────────
                         Box {
                             IconButton(onClick = {
@@ -265,7 +316,7 @@ fun FeedScreen(
                                 vm.markAllNotifsRead()
                             }, modifier = Modifier.size(40.dp)) {
                                 Icon(
-                                    Icons.Rounded.NotificationsNone, null,
+                                    Icons.Rounded.NotificationsNone, "Notifications",
                                     tint     = if (unreadCount > 0) IGAccent else IGGray,
                                     modifier = Modifier.size(22.dp)
                                 )
@@ -314,69 +365,31 @@ fun FeedScreen(
                         )
                     }
                 }
-                HorizontalDivider(color = IGDivider, thickness = 0.5.dp)
-
-                // ── Tab row: Posts | Innerly — collapses on scroll ───────────────
-                AnimatedVisibility(
-                    visible = !tabCollapsed,
-                    enter   = expandVertically(tween(180)) + fadeIn(tween(160)),
-                    exit    = shrinkVertically(tween(160)) + fadeOut(tween(120))
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp)
+                        .clip(RoundedCornerShape(18.dp)).background(IGSurface).padding(4.dp)
+                        .selectableGroup(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Column {
-                        Row(
-                            Modifier.fillMaxWidth().background(IGBg)
-                                .padding(horizontal = 24.dp)
-                        ) {
-                            listOf(
-                                "Posts" to Icons.Rounded.Forum,
-                                "Innerly" to Icons.Rounded.AutoAwesome
-                            ).forEachIndexed { idx, (title, icon) ->
-                                val selected = pagerState.currentPage == idx
-                                Column(
-                                    Modifier
-                                        .weight(1f)
-                                        .clickable(
-                                            interactionSource = remember { MutableInteractionSource() },
-                                            indication        = null
-                                        ) { scope.launch { pagerState.animateScrollToPage(idx) } }
-                                        .padding(vertical = 11.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.spacedBy(5.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                    ) {
-                                        Icon(
-                                            icon, null,
-                                            tint     = if (selected) IGAccent else IGMuted,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Text(
-                                            title,
-                                            fontSize   = 13.sp,
-                                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                            color      = if (selected) IGBlack else IGMuted,
-                                            letterSpacing = 0.1.sp
-                                        )
-                                    }
-                                    val indicatorWidth by animateDpAsState(
-                                        targetValue   = if (selected) 22.dp else 0.dp,
-                                        animationSpec = tween(220),
-                                        label         = "feedtab_$idx"
-                                    )
-                                    Box(
-                                        Modifier
-                                            .width(indicatorWidth)
-                                            .height(1.5.dp)
-                                            .clip(RoundedCornerShape(1.dp))
-                                            .background(IGAccent)
-                                    )
-                                }
+                    listOf("Posts" to Icons.Rounded.Forum, "Innerly" to Icons.Rounded.AutoAwesome)
+                        .forEachIndexed { index, (title, icon) ->
+                            val selected = pagerState.currentPage == index
+                            Row(
+                                Modifier.weight(1f)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(if (selected) IGAccentSoft else Color.Transparent)
+                                    .selectable(selected = selected, role = Role.Tab, onClick = {
+                                        scope.launch { pagerState.animateScrollToPage(index) }
+                                    })
+                                    .heightIn(min = 44.dp).padding(horizontal = 8.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
+                            ) {
+                                val tint = if (selected) IGAccent else IGGray
+                                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp))
+                                Text(title, color = tint, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
                             }
                         }
-                        HorizontalDivider(color = IGDivider, thickness = 0.5.dp)
-                    }
                 }
             }
 
@@ -384,23 +397,26 @@ fun FeedScreen(
             HorizontalPager(
                 state             = pagerState,
                 modifier          = Modifier.weight(1f),
-                userScrollEnabled = true
+                // In the timeline, horizontal drags belong to the photo galleries.
+                userScrollEnabled = pagerState.settledPage != 0
             ) { page ->
                 when (page) {
                     0 -> when {
-                        loading         -> FeedSkeletonLoader()
-                        posts.isEmpty() -> FeedEmptyState { showCreate = true }
+                        !showSaved && loading -> FeedSkeletonLoader()
+                        !showSaved && posts.isEmpty() -> FeedEmptyState { showCreate = true }
                         else -> {
-                            val listState = postsListState
-                            LaunchedEffect(listState.firstVisibleItemIndex) {
-                                val totalItems  = listState.layoutInfo.totalItemsCount
-                                val lastVisible = listState.firstVisibleItemIndex + listState.layoutInfo.visibleItemsInfo.size
-                                if (totalItems > 0 && lastVisible >= totalItems - 3 && hasMore && !isLoadingMore) vm.loadMore()
+                            val listState = if (showSaved) savedListState else postsListState
+                            if (!showSaved) {
+                                LaunchedEffect(listState.firstVisibleItemIndex, visiblePosts.size) {
+                                    val totalItems = listState.layoutInfo.totalItemsCount
+                                    val lastVisible = listState.firstVisibleItemIndex + listState.layoutInfo.visibleItemsInfo.size
+                                    if (totalItems > 0 && lastVisible >= totalItems - 3 && hasMore && !isLoadingMore) vm.loadMore()
+                                }
                             }
                             @OptIn(ExperimentalMaterial3Api::class)
                             androidx.compose.material3.pulltorefresh.PullToRefreshBox(
-                                isRefreshing = isRefreshing,
-                                onRefresh    = { vm.refresh() },
+                                isRefreshing = if (showSaved) savedLibrary.isLoading else isRefreshing,
+                                onRefresh    = { if (showSaved) vm.loadSavedLibrary() else vm.refresh() },
                                 modifier     = Modifier.fillMaxSize()
                             ) {
                                 LazyColumn(
@@ -408,25 +424,80 @@ fun FeedScreen(
                                     modifier = Modifier.fillMaxSize().background(IGBg),
                                     contentPadding = PaddingValues(top = 6.dp, bottom = 88.dp)
                                 ) {
-                                    // ── Tag filter chips (sticky) ─────────────────
-                                    stickyHeader(key = "tagFilter") {
-                                        TagFilterRow(
-                                            selectedTag   = selectedTag,
-                                            onTagSelected = { vm.setTagFilter(it) }
-                                        )
+                                    if (showSaved) {
+                                        item {
+                                            Row(
+                                                Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("Saved posts", fontWeight = FontWeight.SemiBold,
+                                                    color = IGBlack, modifier = Modifier.weight(1f))
+                                                TextButton(onClick = { showSaved = false }) { Text("Back to feed", color = IGGray) }
+                                            }
+                                        }
+                                    } else {
+                                        item {
+                                            Row(
+                                                Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("Timeline", color = IGBlack, fontWeight = FontWeight.SemiBold,
+                                                    modifier = Modifier.weight(1f))
+                                                FeedOrderMenu(
+                                                    options = listOf("Recommended", "Latest first"),
+                                                    selected = if (showLatest) 1 else 0,
+                                                    onSelect = {
+                                                        showLatest = it == 1
+                                                        scope.launch { listState.scrollToItem(0) }
+                                                    }
+                                                )
+                                            }
+                                        }
                                     }
-                                    items(posts, key = { it.postId }) { post ->
+                                    visiblePosts.forEachIndexed { index, post ->
+                                        item(key = "post:${post.postId}", contentType = "post") {
                                         PostCard(
                                             post               = post,
-                                            myUid              = vm.uid,
                                             userReaction       = vm.getUserReaction(post),
-                                            onReact            = { emoji -> vm.toggleReaction(post, emoji) },
+                                            onReact            = { emoji -> vm.toggleReaction(post, emoji, ::showFeedback) },
                                             isBookmarked       = post.postId in savedPostIds,
-                                            onBookmark         = { vm.toggleBookmark(post.postId) },
+                                            onBookmark         = { vm.toggleBookmark(post.postId, ::showFeedback) },
                                             onComment          = { commentPost = post },
-                                            onDelete           = { vm.deletePost(post.postId) },
-                                            onReport           = { vm.hidePostLocally(post.postId); reportTarget = post.postId },
+                                            onEdit             = { editTarget = post },
+                                            onDelete           = { deleteTarget = post },
+                                            onReport           = { reportTarget = post.postId },
+                                            onCopyText         = {
+                                                val clipboard = context.getSystemService(ClipboardManager::class.java)
+                                                if (clipboard == null) {
+                                                    showFeedback("Couldn’t copy this post.")
+                                                } else {
+                                                    clipboard.setPrimaryClip(ClipData.newPlainText("Post text", post.caption))
+                                                    if (android.os.Build.VERSION.SDK_INT < 33) showFeedback("Text copied.")
+                                                }
+                                            },
+                                            onHide             = if (showSaved) null else {
+                                                {
+                                                    setHiddenPosts(hiddenPostIds + post.postId)
+                                                    scope.launch {
+                                                        val action = snackbarHostState.showSnackbar("Post hidden", actionLabel = "Undo")
+                                                        if (action == SnackbarResult.ActionPerformed) {
+                                                            setHiddenPosts(hiddenPostIds - post.postId)
+                                                        }
+                                                    }
+                                                }
+                                            },
                                             onOpenProfile      = { onOpenUserProfile(post.authorUid) },
+                                            pollContent        = {
+                                                if (post.pollOptions.isNotEmpty()) {
+                                                    LaunchedEffect(post.postId, account) { vm.loadPollVote(post.postId) }
+                                                    FeedPollCard(
+                                                        post = post,
+                                                        vote = pollVotes[post.postId],
+                                                        onVote = { vm.voteInPoll(post, it, ::showFeedback) },
+                                                        onRetry = { vm.loadPollVote(post.postId, retry = true) }
+                                                    )
+                                                }
+                                            },
                                             alreadyApproached  = post.authorUid in myApproaches,
                                             isOwnPost          = post.authorUid == vm.uid,
                                             onApproach         = {
@@ -434,13 +505,74 @@ fun FeedScreen(
                                                 else pendingApproachPost = post
                                             }
                                         )
+                                        }
+                                        if (!showSaved && !showLatest && peopleCards.isNotEmpty() &&
+                                            index == minOf(1, visiblePosts.lastIndex)
+                                        ) {
+                                            item(key = "people-suggestions") {
+                                                HomePeopleSuggestions(
+                                                    people = peopleCards,
+                                                    pending = myApproaches,
+                                                    sendingTo = sendingSuggestion,
+                                                    onViewAll = onOpenPeople,
+                                                    onProfile = onOpenUserProfile,
+                                                    onConnect = { person ->
+                                                        if (sendingSuggestion == null) {
+                                                            sendingSuggestion = person.uid
+                                                            approachVm.sendFreeApproach(person.uid, person.alias, myAlias, myAvatar, myPhoto)
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        }
+                                        if (!showSaved && !showLatest && visiblePosts.size >= 3 &&
+                                            index == minOf(5, visiblePosts.lastIndex)
+                                        ) {
+                                            item(key = "conversation-prompt") {
+                                                HomeConversationPrompt { prompt ->
+                                                    if (vm.draftCaption.isBlank()) vm.draftCaption = "$prompt\n\n"
+                                                    showCreate = true
+                                                }
+                                            }
+                                        }
                                     }
                                     item {
-                                        if (isLoadingMore) {
+                                        if (showSaved) {
+                                            Column(
+                                                Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                when {
+                                                    savedLibrary.isLoading -> CircularProgressIndicator(Modifier.size(22.dp), color = IGAccent)
+                                                    savedLibrary.error -> {
+                                                        Text("Couldn’t load saved posts.", color = IGGray)
+                                                        TextButton(onClick = { vm.loadSavedLibrary(reset = visiblePosts.isEmpty()) }) {
+                                                            Text("Try again", color = IGAccent)
+                                                        }
+                                                    }
+                                                    savedLibrary.hasMore -> TextButton(onClick = { vm.loadSavedLibrary(reset = false) }) {
+                                                        Text("Load more saved posts", color = IGAccent)
+                                                    }
+                                                    visiblePosts.isEmpty() -> Text("Posts you save will appear here.", color = IGGray)
+                                                }
+                                            }
+                                        } else if (isLoadingMore) {
                                             Box(Modifier.fillMaxWidth().padding(vertical = 16.dp), Alignment.Center) {
                                                 CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp, color = IGBlack.copy(0.4f))
                                             }
-                                        } else if (!hasMore && posts.isNotEmpty()) {
+                                        } else if (visiblePosts.isEmpty()) {
+                                            Column(Modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text("No posts to show", color = IGGray)
+                                                if (hasMore) {
+                                                    TextButton(onClick = vm::loadMore) { Text("Load more posts", color = IGAccent) }
+                                                }
+                                                if (hiddenPostIds.isNotEmpty()) {
+                                                    TextButton(onClick = { setHiddenPosts(emptySet()) }) {
+                                                        Text("Show hidden posts again", color = IGAccent)
+                                                    }
+                                                }
+                                            }
+                                        } else if (!hasMore) {
                                             Row(Modifier.fillMaxWidth().padding(vertical = 24.dp), Arrangement.Center, Alignment.CenterVertically) {
                                                 HorizontalDivider(Modifier.width(60.dp), color = IGDivider, thickness = 0.8.dp)
                                                 Text("  you're all caught up  ", fontSize = 11.sp, color = IGGray)
@@ -461,62 +593,64 @@ fun FeedScreen(
             }
         }
 
-        // ── FAB — soft, gentle, peaceful ─────────────────────────────────────
-        val fabInf   = rememberInfiniteTransition(label = "fab")
-        val fabPulse by fabInf.animateFloat(
-            1f, 1.04f,
-            infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing), RepeatMode.Reverse), "fp"
+        val createPost = pagerState.currentPage == 0
+        ExtendedFloatingActionButton(
+            onClick = { if (createPost) showCreate = true else showSparksCreate = true },
+            modifier = Modifier.align(Alignment.BottomEnd)
+                .padding(end = 18.dp, bottom = bottomNavPadding + 16.dp),
+            icon = { Icon(Icons.Rounded.EditNote, contentDescription = null) },
+            text = { Text(if (createPost) "Write a post" else "Create a Spark") },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = if (_fsDark) Color(0xFFE8A9C9) else Color(0xFF673651),
+            contentColor = if (_fsDark) Color(0xFF2B1423) else Color.White
         )
-        val fabHaptic = LocalHapticFeedback.current
-        Box(
-            Modifier
-                .align(Alignment.BottomEnd)
-                .navigationBarsPadding()
-                .padding(bottom = bottomNavPadding)
-                .padding(end = 20.dp, bottom = 24.dp)
-        ) {
-            Box(
-                Modifier
-                    .size(54.dp)
-                    .scale(fabPulse)
-                    .shadow(
-                        8.dp, CircleShape,
-                        spotColor = IGAccent.copy(0.35f),
-                        ambientColor = IGAccent.copy(0.15f)
-                    )
-                    .clip(CircleShape)
-                    .background(
-                        Brush.radialGradient(
-                            listOf(
-                                if (_fsDark) Color(0xFF3A2230) else Color(0xFFF0E4EC),
-                                if (_fsDark) Color(0xFF2C1A24) else Color(0xFFE8D5E0)
-                            )
-                        )
-                    )
-                    .clickable {
-                        fabHaptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        if (pagerState.currentPage == 0) showCreate = true
-                        else showSparksCreate = true
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Rounded.EditNote, "New Post",
-                    tint     = IGAccent,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier  = Modifier.align(Alignment.BottomCenter)
+                .padding(bottom = bottomNavPadding + 76.dp)
+        )
     }
 
     // ── Report Dialog ───────────────────────────────────────────────
     reportTarget?.let { postId ->
         FeedPostReportDialog(
             onDismiss = { reportTarget = null },
-            onSubmit  = { reason, note ->
-                vm.reportPost(postId, reason, note)
-                reportTarget = null
+            onSubmit  = { reason, note, complete ->
+                vm.reportPost(postId, reason, note) { sent ->
+                    complete(sent)
+                    if (sent) {
+                        setHiddenPosts(hiddenPostIds + postId)
+                        if (reportTarget == postId) reportTarget = null
+                        showFeedback("Report sent.")
+                    }
+                }
             }
+        )
+    }
+
+    editTarget?.let { post ->
+        EditFeedPostDialog(post, onDismiss = { editTarget = null }) { caption, complete ->
+            vm.editPost(post, caption) { saved ->
+                complete(saved)
+                if (saved) {
+                    if (editTarget?.postId == post.postId) editTarget = null
+                    showFeedback("Post updated.")
+                }
+            }
+        }
+    }
+    deleteTarget?.let { post ->
+        AlertDialog(
+            onDismissRequest = { deleteTarget = null },
+            title = { Text("Delete this post?") },
+            text = { Text("Your post will be removed from the feed.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleteTarget = null
+                    vm.deletePost(post.postId, ::showFeedback)
+                }) { Text("Delete", color = IGRed) }
+            },
+            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text("Cancel") } }
         )
     }
 
@@ -707,25 +841,27 @@ private fun FeedNotifPanel(
 @Composable
 private fun PostCard(
     post             : VeilPost,
-    myUid            : String,
     userReaction     : String?    = null,
     onReact          : (String) -> Unit = {},
     isBookmarked     : Boolean    = false,
     onBookmark       : () -> Unit = {},
     onComment        : () -> Unit,
+    onEdit           : () -> Unit,
     onDelete         : () -> Unit,
     onReport         : () -> Unit,
+    onCopyText       : () -> Unit,
+    onHide           : (() -> Unit)?,
     onOpenProfile    : () -> Unit = {},
+    pollContent      : @Composable () -> Unit = {},
     onApproach       : () -> Unit = {},
     alreadyApproached: Boolean    = false,
     isOwnPost        : Boolean    = false
 ) {
-    val hasReaction = userReaction != null
     val isDev  = com.ns.findyourintroverfriend.util.VeilDevConfig.isDeveloper(post.authorUid)
-    var doubleTapLike      by remember { mutableStateOf(false) }
     var showOptions        by remember { mutableStateOf(false) }
     var showReactionPicker by remember { mutableStateOf(false) }
-    var fullScreenImageUrl by remember { mutableStateOf<String?>(null) }
+    var captionExpanded by rememberSaveable(post.caption) { mutableStateOf(false) }
+    var captionOverflows by remember(post.caption) { mutableStateOf(false) }
     var visible            by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
     LaunchedEffect(Unit) { visible = true }
@@ -737,14 +873,14 @@ private fun PostCard(
         Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 5.dp)
+                .padding(horizontal = 16.dp, vertical = 7.dp)
                 .shadow(
                     elevation     = if (_fsDark) 0.dp else 2.dp,
-                    shape         = RoundedCornerShape(18.dp),
+                    shape         = RoundedCornerShape(24.dp),
                     ambientColor  = Color(0xFF8A7070).copy(0.08f),
                     spotColor     = Color(0xFF8A7070).copy(0.06f)
                 )
-                .clip(RoundedCornerShape(18.dp))
+                .clip(RoundedCornerShape(24.dp))
                 .background(
                     if (isDev)
                         if (_fsDark) Color(0xFF0D1826) else Color(0xFFF0F6FF)
@@ -756,7 +892,7 @@ private fun PostCard(
                         Brush.verticalGradient(
                             listOf(Color(0xFF6B9FE8).copy(0.5f), Color(0xFF6B9FE8).copy(0.1f))
                         ),
-                        RoundedCornerShape(18.dp)
+                        RoundedCornerShape(24.dp)
                     ) else Modifier.border(0.5.dp, IGBorderSoft, RoundedCornerShape(18.dp))
                 )
         ) {
@@ -801,51 +937,21 @@ private fun PostCard(
                             }
                         }
                     }
-                    if (post.createdAt > 0) {
-                        Text(igAgo(post.createdAt), fontSize = 10.5.sp, color = IGMuted)
+                    if (post.createdAt > 0 || post.editedAt > 0) {
+                        val date = listOfNotNull(igAgo(post.createdAt).takeIf { it.isNotEmpty() },
+                            "Edited".takeIf { post.editedAt > 0 }).joinToString(" · ")
+                        Text(date, fontSize = 10.5.sp, color = IGGray)
                     }
                 }
                 IconButton(onClick = { showOptions = true }, modifier = Modifier.size(30.dp)) {
-                    Icon(Icons.Rounded.MoreHoriz, null, tint = IGMuted, modifier = Modifier.size(16.dp))
+                    Icon(Icons.Rounded.MoreHoriz, "Post options", tint = IGGray, modifier = Modifier.size(16.dp))
                 }
             }
 
             // ── Images ───────────────────────────────────────────────────────
             if (post.imageUrls.isNotEmpty()) {
-                val thumbUrl = com.ns.findyourintroverfriend.util.CloudinaryUtil
-                    .thumbnail(post.imageUrls.first(), width = 400, quality = 50)
-                var innerFullScreenUrl by remember { mutableStateOf<String?>(null) }
-                Box(
-                    Modifier.fillMaxWidth().aspectRatio(1f)
-                        .clip(RoundedCornerShape(bottomStart = 0.dp, bottomEnd = 0.dp))
-                        .combinedClickable(
-                            onClick       = { innerFullScreenUrl = post.imageUrls.first() },
-                            onDoubleClick = { if (userReaction == null) onReact("❤️"); doubleTapLike = true }
-                        )
-                ) {
-                    AsyncImage(
-                        model              = thumbUrl,
-                        contentDescription = null,
-                        contentScale       = ContentScale.Crop,
-                        modifier           = Modifier.fillMaxSize()
-                    )
-                    if (post.imageUrls.size > 1) {
-                        Box(
-                            Modifier.align(Alignment.TopEnd).padding(10.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(Color.Black.copy(0.5f))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text("1/${post.imageUrls.size}", fontSize = 12.sp,
-                                color = Color.White, fontWeight = FontWeight.Medium)
-                        }
-                    }
-                }
-                innerFullScreenUrl?.let { rawUrl ->
-                    ImageFullScreenViewer(
-                        url     = com.ns.findyourintroverfriend.util.CloudinaryUtil.fullRes(rawUrl),
-                        onClose = { innerFullScreenUrl = null }
-                    )
+                PostPhotoGallery(post.imageUrls) {
+                    if (userReaction == null) onReact("❤️")
                 }
             }
 
@@ -869,10 +975,22 @@ private fun PostCard(
                     color     = IGBlack,
                     lineHeight = 21.sp,
                     letterSpacing = (-0.1).sp,
+                    maxLines = if (captionExpanded || post.pollOptions.isNotEmpty()) Int.MAX_VALUE else 4,
+                    overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { if (!captionExpanded) captionOverflows = it.hasVisualOverflow },
                     modifier  = Modifier.fillMaxWidth()
                         .padding(horizontal = 16.dp)
                         .padding(top = if (post.imageUrls.isNotEmpty() || post.tag.isNotBlank()) 6.dp else 0.dp, bottom = 4.dp)
                 )
+                if (captionOverflows || captionExpanded) {
+                    Text(
+                        if (captionExpanded) "Show less" else "Read more",
+                        color = IGAccent, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                            .clickable(role = Role.Button) { captionExpanded = !captionExpanded }
+                            .padding(vertical = 5.dp)
+                    )
+                }
                 // Author alias below caption — quiet, small
                 Text(
                     "— ${post.authorAlias.ifBlank { "Anonymous" }}",
@@ -882,8 +1000,10 @@ private fun PostCard(
                     modifier  = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp)
                 )
             }
+            pollContent()
             // ── Reaction summary pills ─────────────────────────────────────────
-            val topReactions = post.reactions.entries
+            val reactionCounts = post.displayReactions()
+            val topReactions = reactionCounts.entries
                 .filter { it.value.isNotEmpty() }
                 .sortedByDescending { it.value.size }
                 .take(3)
@@ -897,8 +1017,9 @@ private fun PostCard(
                         Box(
                             Modifier
                                 .clip(RoundedCornerShape(50))
-                                .background(if (_fsDark) Color(0xFF252530) else Color(0xFFF0EDE8))
-                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                .background(if (userReaction == emoji) IGAccentSoft else IGSurface)
+                                .selectable(selected = userReaction == emoji, role = Role.Button, onClick = { onReact(emoji) })
+                                .padding(horizontal = 9.dp, vertical = 6.dp)
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -910,7 +1031,7 @@ private fun PostCard(
                         }
                     }
                     // Total reaction count
-                    val totalReactions = post.reactions.values.sumOf { it.size }
+                    val totalReactions = reactionCounts.values.sumOf { it.size }
                     if (totalReactions > topReactions.sumOf { it.value.size }) {
                         Text("+${totalReactions - topReactions.sumOf { it.value.size }}", fontSize = 11.sp, color = IGGray)
                     }
@@ -938,21 +1059,24 @@ private fun PostCard(
             ) {
                 // ── Reaction button — short tap = ❤️, long press = picker ──────
                 Box {
-                    IconButton(
-                        onClick   = { onReact(userReaction ?: "❤️") },
-                        modifier  = Modifier.size(38.dp).combinedClickable(
+                    Box(
+                        modifier  = Modifier.size(42.dp).clip(CircleShape).combinedClickable(
+                            role = Role.Button,
+                            onClickLabel = if (userReaction == null) "React with love" else "Remove reaction",
+                            onLongClickLabel = "Choose reaction",
                             onClick     = { onReact(userReaction ?: "❤️") },
                             onLongClick = {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 showReactionPicker = true
                             }
-                        )
+                        ),
+                        contentAlignment = Alignment.Center
                     ) {
                         val reactionEmoji = userReaction
                         if (reactionEmoji != null) {
                             Text(reactionEmoji, fontSize = 18.sp)
                         } else {
-                            Icon(Icons.Rounded.FavoriteBorder, null,
+                            Icon(Icons.Rounded.FavoriteBorder, "React",
                                 tint = IGMuted, modifier = Modifier.size(20.dp))
                         }
                     }
@@ -967,7 +1091,7 @@ private fun PostCard(
                 }
                 // Comment
                 IconButton(onClick = onComment, modifier = Modifier.size(38.dp)) {
-                    Icon(Icons.Rounded.ChatBubbleOutline, null,
+                    Icon(Icons.Rounded.ChatBubbleOutline, "Open comments",
                         tint = IGMuted, modifier = Modifier.size(19.dp))
                 }
                 // Share
@@ -983,14 +1107,14 @@ private fun PostCard(
                     }
                     ctx2.startActivity(android.content.Intent.createChooser(intent, "Share via"))
                 }, modifier = Modifier.size(38.dp)) {
-                    Icon(Icons.Rounded.IosShare, null, tint = IGMuted, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Rounded.IosShare, "Share post", tint = IGMuted, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.weight(1f))
                 // ── Bookmark ──────────────────────────────────────────────────
                 IconButton(onClick = onBookmark, modifier = Modifier.size(38.dp)) {
                     Icon(
                         if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                        contentDescription = "Save",
+                        contentDescription = if (isBookmarked) "Remove from saved posts" else "Save post",
                         tint     = if (isBookmarked) IGAccent else IGMuted,
                         modifier = Modifier.size(19.dp)
                     )
@@ -1039,6 +1163,7 @@ private fun PostCard(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) {}
+                        .verticalScroll(rememberScrollState())
                         .navigationBarsPadding()
                 ) {
                     Box(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 8.dp),
@@ -1047,53 +1172,133 @@ private fun PostCard(
                             .clip(CircleShape).background(IGMuted.copy(0.4f)))
                     }
 
-                    if (post.authorUid == myUid) {
-                        Row(
-                            Modifier.fillMaxWidth()
-                                .clickable { showOptions = false; onDelete() }
-                                .padding(horizontal = 20.dp, vertical = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Rounded.DeleteOutline, null,
-                                tint = IGRed, modifier = Modifier.size(18.dp))
-                            Text("Delete post", fontSize = 15.sp, color = IGRed,
-                                fontWeight = FontWeight.Medium)
+                    PostActionRow(Icons.Rounded.FavoriteBorder, "Choose a reaction") {
+                        showOptions = false
+                        showReactionPicker = true
+                    }
+                    if (post.caption.isNotBlank()) {
+                        PostActionRow(Icons.Rounded.ContentCopy, "Copy post text") {
+                            showOptions = false
+                            onCopyText()
                         }
-                        HorizontalDivider(color = IGDivider, thickness = 0.5.dp)
                     }
-
-                    if (post.authorUid != myUid) {
-                        Row(
-                            Modifier.fillMaxWidth()
-                                .clickable { showOptions = false; onReport() }
-                                .padding(horizontal = 20.dp, vertical = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Rounded.Flag, null,
-                                tint = IGRed, modifier = Modifier.size(18.dp))
-                            Text("Report post", fontSize = 15.sp, color = IGRed,
-                                fontWeight = FontWeight.Medium)
+                    if (onHide != null) {
+                        PostActionRow(Icons.Rounded.VisibilityOff, "Hide this post") {
+                            showOptions = false
+                            onHide()
                         }
-                        HorizontalDivider(color = IGDivider, thickness = 0.5.dp)
                     }
-
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .clickable { showOptions = false }
-                            .padding(horizontal = 20.dp, vertical = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Rounded.Close, null,
-                            tint = IGGray, modifier = Modifier.size(18.dp))
-                        Text("Cancel", fontSize = 15.sp, color = IGBlack)
+                    if (isOwnPost) {
+                        if (post.pollOptions.isEmpty()) {
+                            PostActionRow(Icons.Rounded.Edit, "Edit caption") {
+                                showOptions = false
+                                onEdit()
+                            }
+                        }
+                        PostActionRow(Icons.Rounded.DeleteOutline, "Delete post", color = IGRed) {
+                            showOptions = false
+                            onDelete()
+                        }
+                    } else {
+                        PostActionRow(Icons.Rounded.Flag, "Report post", color = IGRed) {
+                            showOptions = false
+                            onReport()
+                        }
                     }
+                    HorizontalDivider(color = IGDivider, thickness = 0.5.dp)
+                    PostActionRow(Icons.Rounded.Close, "Cancel") { showOptions = false }
                     Spacer(Modifier.height(6.dp))
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FeedOrderMenu(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        TextButton(onClick = { expanded = true }) {
+            Icon(Icons.Rounded.Sort, contentDescription = null, tint = IGGray, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(options[selected], color = IGGray, fontSize = 12.sp)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEachIndexed { index, option ->
+                DropdownMenuItem(
+                    text = { Text(option, color = if (selected == index) IGAccent else IGBlack) },
+                    onClick = { expanded = false; onSelect(index) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeedPollCard(post: VeilPost, vote: FeedPollVote?, onVote: (Int) -> Unit, onRetry: () -> Unit) {
+    val total = post.pollCounts.take(post.pollOptions.size).sum()
+    val selected = vote?.choice
+    val canVote = vote != null && !vote.isBusy && !vote.loadFailed && selected == null
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        post.pollOptions.forEachIndexed { index, option ->
+            val share = if (total > 0) (post.pollCounts[index].toDouble() / total).toFloat().coerceIn(0f, 1f) else 0f
+            val shape = RoundedCornerShape(12.dp)
+            val selectedOption = selected == index
+            Box(
+                Modifier.fillMaxWidth().clip(shape).background(IGSurface)
+                    .border(1.dp, if (selectedOption) IGAccent.copy(alpha = 0.55f) else IGBorderSoft, shape)
+                    .then(
+                        if (canVote) Modifier.clickable(role = Role.Button, onClickLabel = "Vote for $option") { onVote(index) }
+                        else Modifier
+                    )
+            ) {
+                if (selected != null && share > 0f) {
+                    Box(Modifier.matchParentSize().wrapContentWidth(Alignment.Start).fillMaxWidth(share)
+                        .background(if (selectedOption) IGAccentSoft else IGSageSoft))
+                }
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(option, color = IGBlack, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    if (selectedOption) Icon(Icons.Rounded.Check, "Your vote", tint = IGAccent, modifier = Modifier.size(16.dp))
+                    if (selected != null) Text("${(share * 100 + 0.5f).toInt()}%", color = IGGray, fontSize = 12.sp)
+                }
+            }
+        }
+        if (vote?.loadFailed == true) {
+            TextButton(onClick = onRetry) { Text("Couldn’t load your vote · Retry", color = IGGray) }
+        } else {
+            val info = when {
+                vote == null || vote.isBusy -> "Updating poll…"
+                selected == null -> "Vote to see results"
+                total == 1L -> "1 vote"
+                else -> "$total votes"
+            }
+            Text(info, color = IGGray, fontSize = 11.sp)
+        }
+    }
+}
+
+@Composable
+private fun PostActionRow(
+    icon: ImageVector,
+    title: String,
+    color: Color = IGBlack,
+    onClick: () -> Unit
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 15.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+        Text(title, fontSize = 15.sp, color = color)
     }
 }
 
@@ -1107,6 +1312,14 @@ private fun CommentsSheet(
     onOpenUserProfile: (String) -> Unit = {}
 ) {
     val comments      by vm.comments.collectAsStateWithLifecycle()
+    var commentOrder by rememberSaveable(post.postId) { mutableIntStateOf(0) }
+    val sortedComments = remember(comments, commentOrder) {
+        when (commentOrder) {
+            1 -> comments.sortedByDescending { it.createdAt }
+            2 -> comments.sortedWith(compareByDescending<VeilComment> { it.likedBy.size }.thenByDescending { it.createdAt })
+            else -> comments
+        }
+    }
     var commentText    by remember { mutableStateOf(TextFieldValue("")) }
     var replyToAlias   by remember { mutableStateOf("") }
     var replyToCommentId by remember { mutableStateOf("") }
@@ -1124,8 +1337,10 @@ private fun CommentsSheet(
         sheetState        = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
-            Box(Modifier.fillMaxWidth().padding(vertical = 6.dp), Alignment.Center) {
-                Text("Comments", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = IGBlack)
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Comments", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = IGBlack,
+                    modifier = Modifier.weight(1f))
+                FeedOrderMenu(listOf("Oldest first", "Newest first", "Most liked"), commentOrder) { commentOrder = it }
             }
             HorizontalDivider(color = IGDivider, thickness = 0.5.dp)
 
@@ -1153,7 +1368,7 @@ private fun CommentsSheet(
                         }
                     }
                 }
-                items(comments, key = { it.commentId }) { c ->
+                items(sortedComments, key = { it.commentId }) { c ->
                     CommentRow(
                         c                = c,
                         myUid            = vm.uid,
@@ -1240,6 +1455,7 @@ private fun CommentsSheet(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CommentRow(
     c                : VeilComment,
@@ -1557,19 +1773,25 @@ private fun buildCommentAnnotated(alias: String, text: String): androidx.compose
 private fun CreatePostSheet(vm: FeedViewModel, myAlias: String, onDismiss: () -> Unit) {
     val isPosting by vm.isPosting.collectAsStateWithLifecycle()
     val context   = LocalContext.current
-    var pickedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    val pickedUris = vm.draftImageUris
+    val pollOptions = vm.draftPollOptions
+    val hasPoll = pollOptions.isNotEmpty()
+    val captionFlagged = VeilSafetyUtil.containsProfanity(vm.draftCaption)
+    val optionsFlagged = pollOptions.any(VeilSafetyUtil::containsProfanity)
+    val isDraftValid = if (hasPoll) validPollDraft(vm.draftCaption, pollOptions)
+        else vm.draftCaption.isNotBlank() || pickedUris.isNotEmpty()
 
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents()
-    ) { uris -> pickedUris = uris; vm.draftImageUris = uris }
+    ) { uris -> vm.draftImageUris = (vm.draftImageUris + uris).distinct() }
 
     ModalBottomSheet(
         onDismissRequest = { if (!isPosting) onDismiss() },
         containerColor   = IGBg,
         sheetState       = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ) {
-        Column(Modifier.fillMaxWidth().navigationBarsPadding()
-            .padding(horizontal = 16.dp).imePadding()) {
+        Column(Modifier.fillMaxWidth().navigationBarsPadding().imePadding()
+            .verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
             // Header
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween) {
@@ -1579,14 +1801,12 @@ private fun CreatePostSheet(vm: FeedViewModel, myAlias: String, onDismiss: () ->
                 Text("New Post", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = IGBlack)
                 TextButton(
                     onClick  = { vm.submitPost(context) { onDismiss() } },
-                    enabled  = (!isPosting)
-                           && (vm.draftCaption.isNotBlank() || pickedUris.isNotEmpty())
-                           && !VeilSafetyUtil.containsProfanity(vm.draftCaption)
+                    enabled  = !isPosting && isDraftValid && !captionFlagged && !optionsFlagged
                 ) {
                     if (isPosting) {
-                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = IGBlue)
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = IGAccent)
                     } else {
-                        Text("Share", color = IGBlue, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Publish", color = if (isDraftValid) IGAccent else IGGray, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -1612,16 +1832,16 @@ private fun CreatePostSheet(vm: FeedViewModel, myAlias: String, onDismiss: () ->
             Row(
                 Modifier.fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .background(if (_fsDark) Color(0xFF2D1318) else Color(0xFFFFF3F3))
+                    .background(IGSurface)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Rounded.Warning, null, tint = IGRed, modifier = Modifier.size(14.dp))
+                Icon(Icons.Rounded.Info, null, tint = IGGray, modifier = Modifier.size(14.dp))
                 Text(
-                    "No vulgar or abusive content. Violations = permanent ban.",
+                    "Keep posts respectful. Abusive content can lead to an account ban.",
                     fontSize = 11.sp,
-                    color = if (_fsDark) Color(0xFFFF8A8A) else Color(0xFFB91C1C),
+                    color = IGGray,
                     lineHeight = 16.sp
                 )
             }
@@ -1629,16 +1849,16 @@ private fun CreatePostSheet(vm: FeedViewModel, myAlias: String, onDismiss: () ->
             Spacer(Modifier.height(4.dp))
 
             // Caption input with profanity detection
-            val hasProfanity = VeilSafetyUtil.containsProfanity(vm.draftCaption)
             TextField(
                 value         = vm.draftCaption,
-                onValueChange = { vm.draftCaption = it },
+                onValueChange = { vm.draftCaption = it; vm.postError = null },
+                enabled       = !isPosting,
                 modifier      = Modifier.fillMaxWidth(),
-                placeholder   = { Text("Write a caption…", color = IGGray, fontSize = 15.sp) },
+                placeholder   = { Text(if (hasPoll) "Ask a question…" else "Write a caption…", color = IGGray, fontSize = 15.sp) },
                 colors        = TextFieldDefaults.colors(
                     focusedContainerColor   = Color.Transparent,
                     unfocusedContainerColor = Color.Transparent,
-                    focusedIndicatorColor   = if (hasProfanity) IGRed else IGBlue,
+                    focusedIndicatorColor   = if (captionFlagged) IGRed else IGAccent,
                     unfocusedIndicatorColor = Color.Transparent,
                     disabledIndicatorColor  = Color.Transparent
                 ),
@@ -1647,9 +1867,9 @@ private fun CreatePostSheet(vm: FeedViewModel, myAlias: String, onDismiss: () ->
                 textStyle = LocalTextStyle.current.copy(fontSize = 15.sp, color = IGBlack)
             )
 
-            if (hasProfanity) {
+            if (captionFlagged) {
                 Text(
-                    "🚫 This caption violates our content policy and cannot be posted.",
+                    "Check your caption for language flagged by VEIL.",
                     fontSize = 11.sp, color = IGRed, modifier = Modifier.padding(top = 2.dp)
                 )
             }
@@ -1659,68 +1879,116 @@ private fun CreatePostSheet(vm: FeedViewModel, myAlias: String, onDismiss: () ->
             // Picked images preview
             if (pickedUris.isNotEmpty()) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(pickedUris) { uri ->
-                        Box(Modifier.size(80.dp).clip(RoundedCornerShape(10.dp))) {
-                            AsyncImage(model = uri, contentDescription = null,
+                    itemsIndexed(pickedUris, key = { _, uri -> uri.toString() }) { index, uri ->
+                        Box(Modifier.size(88.dp).clip(RoundedCornerShape(12.dp))) {
+                            AsyncImage(model = uri, contentDescription = "Photo ${index + 1}",
                                 contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                            IconButton(
+                                enabled = !isPosting,
+                                onClick = { vm.draftImageUris = vm.draftImageUris - uri },
+                                modifier = Modifier.align(Alignment.TopEnd).padding(3.dp)
+                                    .size(32.dp).background(IGCard.copy(alpha = 0.9f), CircleShape)
+                            ) {
+                                Icon(Icons.Rounded.Close, "Remove photo ${index + 1}", tint = IGBlack, modifier = Modifier.size(16.dp))
+                            }
                         }
                     }
                 }
                 Spacer(Modifier.height(12.dp))
             }
 
-            // ── Tag picker ────────────────────────────────────────────────────
-            Text(
-                "Tag this post",
-                fontSize   = 12.sp,
-                color      = IGGray,
-                fontWeight = FontWeight.Medium,
-                modifier   = Modifier.padding(bottom = 8.dp)
-            )
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                items(VEIL_POST_TAGS) { tag ->
-                    val selected = vm.draftTag == tag
-                    Box(
-                        Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                if (selected) IGAccent
-                                else if (_fsDark) Color(0xFF252530) else Color(0xFFF0EDE8)
-                            )
-                            .clickable {
-                                vm.draftTag = if (selected) "" else tag
-                            }
-                            .padding(horizontal = 14.dp, vertical = 7.dp)
+            if (hasPoll) {
+                PollDraftEditor(
+                    options = pollOptions,
+                    enabled = !isPosting,
+                    onChange = { vm.draftPollOptions = it; vm.postError = null }
+                )
+                val problem = when {
+                    optionsFlagged -> "Check the language in your poll options."
+                    vm.draftCaption.trim().length > MAX_POLL_QUESTION_LENGTH -> "Use up to $MAX_POLL_QUESTION_LENGTH characters for the question."
+                    pollOptions.filter { it.isNotBlank() }.let { filled ->
+                        filled.map { it.trim().lowercase() }.distinct().size != filled.size
+                    } -> "Use a different answer for each option."
+                    else -> null
+                }
+                problem?.let { Text(it, color = IGRed, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)) }
+                Spacer(Modifier.height(12.dp))
+            }
+
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { launcher.launch("image/*") },
+                    enabled = !isPosting, modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, IGBorderSoft)
+                ) {
+                    Icon(Icons.Rounded.Image, null, tint = IGGray, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Add photos", color = IGBlack)
+                }
+                if (!hasPoll) {
+                    OutlinedButton(
+                        onClick = { vm.draftPollOptions = listOf("", ""); vm.postError = null },
+                        enabled = !isPosting, modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, IGBorderSoft)
                     ) {
-                        Text(
-                            tag,
-                            fontSize   = 12.sp,
-                            color      = if (selected) Color.White else IGBlack,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-                        )
+                        Icon(Icons.Rounded.Poll, null, tint = IGGray, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Add poll", color = IGBlack)
                     }
                 }
             }
-
-            Spacer(Modifier.height(12.dp))
-
-            // Add photo button
-            OutlinedButton(
-                onClick = { launcher.launch("image/*") },
-                modifier = Modifier.fillMaxWidth(),
-                shape    = RoundedCornerShape(12.dp),
-                border   = BorderStroke(1.dp, IGDivider)
-            ) {
-                Icon(Icons.Rounded.Image, null, tint = IGBlack, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(if (pickedUris.isEmpty()) "Add Photos" else "Change Photos",
-                    color = IGBlack, fontWeight = FontWeight.Medium)
-            }
-
+            vm.postError?.let { Text(it, color = IGRed, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp)) }
             Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun PollDraftEditor(options: List<String>, enabled: Boolean, onChange: (List<String>) -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().background(IGSurface, RoundedCornerShape(16.dp)).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Text("Poll options", color = IGBlack, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f))
+            TextButton(onClick = { onChange(emptyList()) }, enabled = enabled) {
+                Text("Remove poll", color = IGGray)
+            }
+        }
+        Text("2–4 choices · One vote per person", color = IGGray, fontSize = 12.sp)
+        options.forEachIndexed { index, option ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = option,
+                    onValueChange = { text ->
+                        if (text.length <= MAX_POLL_OPTION_LENGTH) {
+                            onChange(options.mapIndexed { at, value -> if (at == index) text else value })
+                        }
+                    },
+                    label = { Text("Option ${index + 1}") },
+                    modifier = Modifier.weight(1f),
+                    enabled = enabled,
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = IGAccent,
+                        unfocusedBorderColor = IGBorderSoft
+                    )
+                )
+                if (options.size > 2) {
+                    IconButton(onClick = { onChange(options.filterIndexed { at, _ -> at != index }) }, enabled = enabled) {
+                        Icon(Icons.Rounded.Close, "Remove option ${index + 1}", tint = IGGray)
+                    }
+                }
+            }
+        }
+        if (options.size < MAX_POLL_OPTIONS) {
+            TextButton(onClick = { onChange(options + "") }, enabled = enabled) {
+                Icon(Icons.Rounded.Add, null, tint = IGAccent)
+                Spacer(Modifier.width(5.dp))
+                Text("Add an option", color = IGAccent)
+            }
         }
     }
 }
@@ -1779,10 +2047,12 @@ private fun IGAvatar(alias: String, photoUrl: String, avatarRes: String, size: D
 @Composable
 private fun FeedPostReportDialog(
     onDismiss: () -> Unit,
-    onSubmit : (reason: String, note: String) -> Unit
+    onSubmit : (reason: String, note: String, complete: (Boolean) -> Unit) -> Unit
 ) {
     var selectedReason by remember { mutableStateOf("") }
     var note           by remember { mutableStateOf("") }
+    var sending by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1842,64 +2112,187 @@ private fun FeedPostReportDialog(
                 )
                 Text("⚠️ False reports may result in action against your account.",
                     fontSize = 10.sp, color = IGGray, modifier = Modifier.padding(top = 2.dp))
+                if (failed) Text("Couldn’t send your report. Try again.", color = IGRed, fontSize = 12.sp)
             }
         },
         confirmButton = {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                    Text("Cancel", color = IGGray, fontSize = 13.sp)
+                    Text(if (sending) "Close" else "Cancel", color = IGGray, fontSize = 13.sp)
                 }
                 Button(
-                    onClick  = { if (selectedReason.isNotBlank()) onSubmit(selectedReason, note) },
-                    enabled  = selectedReason.isNotBlank(),
+                    onClick  = {
+                        sending = true
+                        failed = false
+                        onSubmit(selectedReason, note) { sent ->
+                            sending = false
+                            failed = !sent
+                        }
+                    },
+                    enabled  = selectedReason.isNotBlank() && !sending,
                     colors   = ButtonDefaults.buttonColors(containerColor = IGRed,
                         disabledContainerColor = IGGray.copy(0.3f)),
                     shape    = RoundedCornerShape(8.dp),
                     modifier = Modifier.weight(1f)
-                ) { Text("Report", fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
+                ) { Text(if (sending) "Sending…" else "Report", fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
             }
         },
         dismissButton = null
     )
 }
 
+@Composable
+private fun EditFeedPostDialog(
+    post: VeilPost,
+    onDismiss: () -> Unit,
+    onSave: (String, (Boolean) -> Unit) -> Unit
+) {
+    var caption by rememberSaveable(post.postId) { mutableStateOf(post.caption) }
+    var saving by remember { mutableStateOf(false) }
+    var failed by remember { mutableStateOf(false) }
+    val hasProfanity = VeilSafetyUtil.containsProfanity(caption)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = IGCard,
+        title = { Text("Edit caption", color = IGBlack) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedTextField(
+                    value = caption,
+                    onValueChange = { caption = it; failed = false },
+                    enabled = !saving,
+                    label = { Text("Caption") },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    maxLines = 8,
+                    isError = hasProfanity
+                )
+                when {
+                    hasProfanity -> Text("Check your caption for language flagged by VEIL.", color = IGRed, fontSize = 12.sp)
+                    failed -> Text("Couldn’t save your changes. Try again.", color = IGRed, fontSize = 12.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = !saving && !hasProfanity && caption.trim() != post.caption.trim() &&
+                    (caption.isNotBlank() || post.imageUrls.isNotEmpty()),
+                onClick = {
+                    saving = true
+                    failed = false
+                    onSave(caption) { saved ->
+                        saving = false
+                        failed = !saved
+                    }
+                }
+            ) { Text(if (saving) "Saving…" else "Save changes") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(if (saving) "Close" else "Cancel") } }
+    )
+}
+
 // ── Full-screen Image Viewer ───────────────────────────────────────────────────
 // Loads the full-res image ONLY when the user taps — saves bandwidth for scrollers.
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ImageFullScreenViewer(url: String, onClose: () -> Unit) {
-    androidx.compose.ui.window.Dialog(
-        onDismissRequest = onClose,
-        properties = androidx.compose.ui.window.DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnClickOutside   = true
+internal fun PostPhotoGallery(urls: List<String>, onDoubleTap: (() -> Unit)? = null) {
+    val pager = rememberPagerState(pageCount = { urls.size })
+    var fullScreenPage by rememberSaveable { mutableStateOf<Int?>(null) }
+    val scope = rememberCoroutineScope()
+    Box(Modifier.fillMaxWidth().aspectRatio(1f)) {
+        HorizontalPager(state = pager, modifier = Modifier.fillMaxSize(), userScrollEnabled = urls.size > 1) { page ->
+            AsyncImage(
+                model = com.ns.findyourintroverfriend.util.CloudinaryUtil.thumbnail(urls[page], width = 400, quality = 50),
+                contentDescription = "Open photo ${page + 1} of ${urls.size}",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().combinedClickable(
+                    onClick = { fullScreenPage = page },
+                    onDoubleClick = onDoubleTap
+                )
+            )
+        }
+        PhotoPosition(pager.currentPage, urls.size, Modifier.align(Alignment.TopEnd).padding(10.dp))
+        if (pager.currentPage > 0) {
+            PhotoPageButton(previous = true, modifier = Modifier.align(Alignment.CenterStart).padding(start = 6.dp)) {
+                scope.launch { pager.animateScrollToPage((pager.currentPage - 1).coerceAtLeast(0)) }
+            }
+        }
+        if (pager.currentPage < urls.lastIndex) {
+            PhotoPageButton(previous = false, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 6.dp)) {
+                scope.launch { pager.animateScrollToPage((pager.currentPage + 1).coerceAtMost(urls.lastIndex)) }
+            }
+        }
+    }
+    fullScreenPage?.let { selected ->
+        ImageFullScreenViewer(
+            urls = urls,
+            initialPage = selected,
+            onClose = { page ->
+                pager.requestScrollToPage(page)
+                fullScreenPage = null
+            }
         )
+    }
+}
+
+@Composable
+private fun PhotoPageButton(previous: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    IconButton(onClick = onClick, modifier = modifier.size(48.dp)) {
+        Box(Modifier.size(30.dp).background(Color(0xFF282329), CircleShape), contentAlignment = Alignment.Center) {
+            Icon(
+                if (previous) Icons.Rounded.ChevronLeft else Icons.Rounded.ChevronRight,
+                contentDescription = if (previous) "Previous photo" else "Next photo",
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun PhotoPosition(page: Int, size: Int, modifier: Modifier) {
+    if (size < 2) return
+    Text(
+        "${page + 1}/$size", fontSize = 12.sp, color = Color.White,
+        modifier = modifier.background(Color.Black.copy(alpha = 0.58f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ImageFullScreenViewer(urls: List<String>, initialPage: Int, onClose: (Int) -> Unit) {
+    val pager = rememberPagerState(initialPage = initialPage.coerceIn(urls.indices), pageCount = { urls.size })
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = { onClose(pager.currentPage) },
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Box(
-            Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-                .clickable(indication = null,
-                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                    onClick = onClose
-                ),
+            Modifier.fillMaxSize().background(Color.Black),
             contentAlignment = Alignment.Center
         ) {
-            var loading by remember { mutableStateOf(true) }
-            AsyncImage(
-                model              = url,
-                contentDescription = "Full image",
-                contentScale       = ContentScale.Fit,
-                modifier           = Modifier.fillMaxSize(),
-                onSuccess          = { loading = false },
-                onError            = { loading = false }
-            )
-            if (loading) {
-                CircularProgressIndicator(color = Color.White.copy(0.7f), strokeWidth = 2.dp,
-                    modifier = Modifier.size(36.dp))
+            HorizontalPager(state = pager, modifier = Modifier.fillMaxSize(), userScrollEnabled = urls.size > 1) { page ->
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    var loading by remember(urls[page]) { mutableStateOf(true) }
+                    var failed by remember(urls[page]) { mutableStateOf(false) }
+                    AsyncImage(
+                        model = com.ns.findyourintroverfriend.util.CloudinaryUtil.fullRes(urls[page]),
+                        contentDescription = "Photo ${page + 1} of ${urls.size}",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize(),
+                        onSuccess = { loading = false; failed = false },
+                        onError = { loading = false; failed = true }
+                    )
+                    if (loading) {
+                        CircularProgressIndicator(color = Color.White.copy(0.7f), strokeWidth = 2.dp, modifier = Modifier.size(32.dp))
+                    } else if (failed) {
+                        Text("Couldn’t load this photo.", color = Color.White)
+                    }
+                }
             }
-            // Close button
+            PhotoPosition(pager.currentPage, urls.size, Modifier.align(Alignment.TopStart).padding(16.dp))
             IconButton(
-                onClick  = onClose,
+                onClick  = { onClose(pager.currentPage) },
                 modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
                     .background(Color.Black.copy(0.5f), shape = CircleShape).size(36.dp)
             ) {
@@ -2037,65 +2430,6 @@ private fun FeedEmptyState(onCreatePost: () -> Unit) {
     }
 }
 
-// ── Tag Filter Row — sticky chips at top of feed ─────────────────────────────
-@Composable
-private fun TagFilterRow(
-    selectedTag  : String,
-    onTagSelected: (String) -> Unit
-) {
-    val allTags = listOf("All") + VEIL_POST_TAGS
-    Surface(
-        color     = IGBg,
-        shadowElevation = 0.dp,
-        modifier  = Modifier.fillMaxWidth()
-    ) {
-        Column {
-            LazyRow(
-                contentPadding        = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                items(allTags) { tag ->
-                    val selected = tag == selectedTag
-                    val scale by animateFloatAsState(
-                        targetValue   = if (selected) 1.04f else 1f,
-                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                        label         = "chip_$tag"
-                    )
-                    Box(
-                        Modifier
-                            .scale(scale)
-                            .clip(RoundedCornerShape(50))
-                            .background(
-                                if (selected) IGAccent
-                                else if (_fsDark) Color(0xFF1E1E27) else Color(0xFFF0EDE8)
-                            )
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication        = null
-                            ) { onTagSelected(tag) }
-                            .border(
-                                width  = if (selected) 0.dp else 0.8.dp,
-                                color  = if (selected) Color.Transparent else IGBorderSoft,
-                                shape  = RoundedCornerShape(50)
-                            )
-                            .padding(horizontal = 14.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            tag,
-                            fontSize   = 12.sp,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                            color      = if (selected) Color.White else IGBlack,
-                            maxLines   = 1
-                        )
-                    }
-                }
-            }
-            HorizontalDivider(color = IGDivider, thickness = 0.5.dp)
-        }
-    }
-}
-
 // ── Reaction Picker — floating row of 5 emoji (long-press trigger) ────────────
 @Composable
 private fun ReactionPicker(
@@ -2103,9 +2437,6 @@ private fun ReactionPicker(
     onReact        : (String) -> Unit,
     onDismiss      : () -> Unit
 ) {
-    val reactions = listOf("❤️", "🥀", "🌙", "😂", "🤍")
-    val labels    = listOf("Love", "Felt This", "Relatable", "Funny", "Support")
-
     // Dismiss on outside click via dialog
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismiss,
@@ -2134,13 +2465,12 @@ private fun ReactionPicker(
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    reactions.forEachIndexed { idx, emoji ->
+                    FEED_REACTION_LABELS.forEach { (emoji, label) ->
                         val isActive = emoji == currentReaction
-                        var pressed by remember { mutableStateOf(false) }
                         val emojiScale by animateFloatAsState(
-                            targetValue   = if (pressed || isActive) 1.35f else 1f,
+                            targetValue   = if (isActive) 1.2f else 1f,
                             animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                            label         = "emoji_$idx"
+                            label         = "reaction_$emoji"
                         )
                         val haptic = LocalHapticFeedback.current
                         Column(
@@ -2148,7 +2478,8 @@ private fun ReactionPicker(
                             modifier = Modifier
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
-                                    indication        = null
+                                    indication = null,
+                                    role = Role.Button
                                 ) {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     onReact(emoji)
@@ -2162,7 +2493,7 @@ private fun ReactionPicker(
                             )
                             Spacer(Modifier.height(2.dp))
                             Text(
-                                labels[idx],
+                                label,
                                 fontSize  = 8.sp,
                                 color     = if (isActive) IGAccent else IGGray,
                                 fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,

@@ -198,7 +198,7 @@ fun FeedDmInboxScreen(
                 unreadMatchIds = unreadMatchIds,
                 presenceMap    = presenceMap,
                 showLastSeen   = showLastSeen,
-                onOpenChat     = { id -> vm.markMatchRead(id); onOpenChat(id) },
+                onOpenChat     = onOpenChat,
                 onDelete       = { id -> vm.deleteMatch(id) },
                 onBlock        = { m ->
                     val other = if (m.userA == myUid) m.userB else m.userA
@@ -213,7 +213,7 @@ fun FeedDmInboxScreen(
                 presenceMap    = presenceMap,
                 showLastSeen   = showLastSeen,
                 myUid          = myUid,
-                onOpenChat     = { id -> vm.markMatchRead(id); onOpenChat(id) },
+                onOpenChat     = onOpenChat,
                 onDelete       = { id -> vm.deleteMatch(id) },
                 onBlock        = { m ->
                     val other = if (m.userA == myUid) m.userB else m.userA

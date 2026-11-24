@@ -10,12 +10,151 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function safetyModerator() {
+      return request.auth != null && request.auth.token.get('safetyModerator', false) == true;
+    }
+
+    function safetyAllowed(uid) {
+      let path = /databases/$(database)/documents/safetyRestrictions/$(uid);
+      return !exists(path) || (get(path).data.permanent == false && get(path).data.until <= request.time);
+    }
+
+    function contactAllowed(first, second) {
+      return first is string && second is string && first != second
+        && !exists(/databases/$(database)/documents/userBlocks/$(first)/blocked/$(second))
+        && !exists(/databases/$(database)/documents/userBlocks/$(second)/blocked/$(first));
+    }
+
+    function activeMatchParticipant(matchId) {
+      let matchData = get(/databases/$(database)/documents/matches/$(matchId)).data;
+      return request.auth != null && (request.auth.uid == matchData.userA || request.auth.uid == matchData.userB)
+        && contactAllowed(matchData.userA, matchData.userB) && safetyAllowed(request.auth.uid);
+    }
+
+    match /userBlocks/{owner}/blocked/{target} {
+      allow get: if request.auth != null && request.auth.uid in [owner, target];
+      allow list: if request.auth != null && request.auth.uid == owner;
+      allow create, update: if request.auth != null && request.auth.uid == owner && owner != target
+        && request.resource.data.keys().hasOnly(['createdAt']) && request.resource.data.createdAt == request.time;
+      allow delete: if request.auth != null && request.auth.uid == owner;
+    }
+
+    match /safetyReports/{id} {
+      allow read: if safetyModerator();
+      match /actions/{actionId} {
+        allow read: if safetyModerator();
+      }
+    }
+
+    match /safetyFeedback/{id} {
+      allow read: if safetyModerator();
+    }
+
+    match /safetyRestrictions/{uid} {
+      allow get: if safetyModerator() || (request.auth != null && request.auth.uid == uid);
+    }
+
+    // People exposes only the existing public alias and an optional claimed handle.
+    function peopleSettingsPath(uid) {
+      return /databases/$(database)/documents/peopleSettings/$(uid);
+    }
+
+    function peopleProfilePath(uid) {
+      return /databases/$(database)/documents/peopleProfiles/$(uid);
+    }
+
+    function peopleUsernamePath(username) {
+      return /databases/$(database)/documents/peopleUsernames/$(username);
+    }
+
+    function validPeopleUsername(username) {
+      return username is string && username.matches('^[a-z][a-z0-9_]{2,19}$')
+        && !(username in ['admin', 'administrator', 'support', 'moderator', 'veil',
+                          'solynlabs', 'google', 'system', 'staff', 'official']);
+    }
+
+    function peopleEligible(uid) {
+      let user = get(/databases/$(database)/documents/users/$(uid)).data;
+      return user.get('profileComplete', false) == true
+        && user.get('isReviewerAccount', false) != true
+        && user.get('isBanned', false) != true
+        && safetyAllowed(uid);
+    }
+
+    function validPeopleSettings(uid) {
+      let data = request.resource.data;
+      let oldUsername = resource == null ? '' : resource.data.username;
+      return data.keys().hasOnly(['listed', 'username'])
+        && data.listed is bool && data.username is string
+        && (data.username == '' || (validPeopleUsername(data.username)
+          && getAfter(peopleUsernamePath(data.username)).data.uid == uid))
+        && (oldUsername == '' || oldUsername == data.username || !existsAfter(peopleUsernamePath(oldUsername)))
+        && (data.listed
+          ? getAfter(peopleProfilePath(uid)).data.username == data.username
+          : !existsAfter(peopleProfilePath(uid)));
+    }
+
+    match /peopleSettings/{uid} {
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && peopleEligible(uid) && validPeopleSettings(uid);
+    }
+
+    match /peopleProfiles/{uid} {
+      allow get: if request.auth != null;
+      allow list: if request.auth != null && request.query.limit <= 32;
+      allow create, update: if request.auth != null && request.auth.uid == uid && peopleEligible(uid)
+        && request.resource.data.keys().hasOnly(['alias', 'searchAlias', 'username'])
+        && request.resource.data.alias is string
+        && request.resource.data.alias.size() > 0 && request.resource.data.alias.size() <= 40
+        && request.resource.data.searchAlias == request.resource.data.alias.lower()
+        && getAfter(peopleSettingsPath(uid)).data.listed == true
+        && getAfter(peopleSettingsPath(uid)).data.username == request.resource.data.username;
+      allow delete: if request.auth != null && request.auth.uid == uid
+        && getAfter(peopleSettingsPath(uid)).data.listed == false;
+    }
+
+    match /peopleUsernames/{username} {
+      allow create: if request.auth != null && validPeopleUsername(username)
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid
+        && getAfter(peopleSettingsPath(request.auth.uid)).data.username == username;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid
+        && getAfter(peopleSettingsPath(request.auth.uid)).data.username != username;
+    }
+
     // ── User profiles ──────────────────────────────────────────────────────
     match /users/{userId} {
       // Owner can read & write their own doc fully
       allow read, write: if request.auth != null && request.auth.uid == userId;
       // Any signed-in user can read another member's profile (alias, emoji, etc.)
       allow read: if request.auth != null;
+      match /savedPosts/{postId} {
+        allow read, delete: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+                              && request.resource.data.keys().hasOnly(['savedAt'])
+                              && request.resource.data.savedAt is int;
+      }
+      match /group_chat_state/{roomId} {
+        allow read, delete: if request.auth != null && request.auth.uid == userId;
+        allow create, update: if request.auth != null && request.auth.uid == userId
+          && request.resource.data.keys().hasOnly(['notificationMode', 'lastReadAt', 'pinned'])
+          && request.resource.data.get('notificationMode', 'all') in ['all', 'replies', 'muted']
+          && request.resource.data.get('lastReadAt', request.time) is timestamp
+          && request.resource.data.get('pinned', false) is bool;
+      }
+      match /ai_conversations/{conversationId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        match /messages/{messageId} {
+          allow read: if request.auth != null && request.auth.uid == userId;
+        }
+      }
+      match /ai_memories/{memoryId} {
+        allow read: if request.auth != null && request.auth.uid == userId;
+        allow update: if request.auth != null && request.auth.uid == userId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isDeleted'])
+          && request.resource.data.isDeleted == true;
+      }
       // Any authenticated user can update certain fields on other users' docs
       allow update: if request.auth != null
                  && request.resource.data.diff(resource.data).affectedKeys()
@@ -164,35 +303,34 @@ service cloud.firestore {
 
     // ── Reports (user-reports a member) ───────────────────────────────────
     // Doc ID format: "{groupId}__{reporterUid}__{targetUid}"
-    // Any signed-in user can create a report; only the reporter can read theirs.
-    // Admin reads all (enforced app-side by email check).
     match /reports/{reportId} {
-      // Anyone signed in can create a report
-      allow create: if request.auth != null;
-      // Reporter can read their own report; admin reads all
-      allow read: if request.auth != null;
-      // No updates or deletes by normal users (admin handles via Cloud Functions / console)
+      allow create: if request.auth != null && request.resource.data.reporterUid == request.auth.uid;
+      allow list: if safetyModerator();
+      // Legacy clients check their own deterministic document for duplicates.
+      allow get: if safetyModerator() || (request.auth != null && (resource == null
+        ? reportId.matches('.*__' + request.auth.uid + '__.*')
+        : resource.data.reporterUid == request.auth.uid));
       allow update, delete: if false;
     }
 
     // ── Reported Questions (user reports a question card) ─────────────────
     match /reported_questions/{reportId} {
-      allow create: if request.auth != null;
-      allow read:   if request.auth != null;
+      allow create: if request.auth != null && request.resource.data.reporterUid == request.auth.uid;
+      allow read:   if safetyModerator();
       allow update, delete: if false;
     }
 
     // ── Admin logs ──────────────────────────────────────────────────────
     // Written by admin via app; read back in dashboard for audit trail.
     match /admin_logs/{actionId} {
-      allow read, create: if request.auth != null;
+      allow read, create: if safetyModerator();
       allow update, delete: if false;
     }
 
     // ── Admin actions log ─────────────────────────────────────────────────
     // Written by Cloud Function or admin-only; normal users cannot write here.
     match /admin_actions/{actionId} {
-      allow read:   if request.auth != null;
+      allow read:   if safetyModerator();
       allow write:  if false;  // written only by Cloud Functions / Firebase console
     }
 
@@ -263,8 +401,10 @@ service cloud.firestore {
     // user's like on themselves — allow read if the doc ID equals the requester's UID.
     match /swipeLikes/{ownerUid}/given/{targetUid} {
       // Owner reads all their own decisions
-      allow read, write: if request.auth != null
+      allow read, delete: if request.auth != null
                       && request.auth.uid == ownerUid;
+      allow create, update: if request.auth != null && request.auth.uid == ownerUid
+                          && contactAllowed(ownerUid, targetUid) && safetyAllowed(ownerUid);
       // Target reads the decision made about them (for mutual-match detection)
       allow read: if request.auth != null
                && request.auth.uid == targetUid;
@@ -277,27 +417,31 @@ service cloud.firestore {
                        && request.auth.uid == ownerUid;
       // Sender writes their like notification
       allow create, update: if request.auth != null
-                         && request.auth.uid == senderUid;
+                         && request.auth.uid == senderUid
+                         && contactAllowed(ownerUid, senderUid) && safetyAllowed(senderUid);
     }
 
     // ── Matches ────────────────────────────────────────────────────────────────
     match /matches/{matchId} {
-      allow create: if request.auth != null;
+      allow create: if request.auth != null
+                   && request.auth.uid in [request.resource.data.userA, request.resource.data.userB]
+                   && contactAllowed(request.resource.data.userA, request.resource.data.userB)
+                   && safetyAllowed(request.auth.uid);
       allow read:   if request.auth != null;
       allow update: if request.auth != null
                  && (resource.data.userA == request.auth.uid
-                  || resource.data.userB == request.auth.uid);
+                  || resource.data.userB == request.auth.uid)
+                 && request.resource.data.userA == resource.data.userA
+                 && request.resource.data.userB == resource.data.userB;
       allow delete: if request.auth != null
                  && (resource.data.userA == request.auth.uid
                   || resource.data.userB == request.auth.uid);
 
       // Chat messages inside the Connection Room
       match /messages/{messageId} {
-        allow read: if request.auth != null
-                 && (get(/databases/$(database)/documents/matches/$(matchId)).data.userA == request.auth.uid
-                  || get(/databases/$(database)/documents/matches/$(matchId)).data.userB == request.auth.uid);
+        allow read: if activeMatchParticipant(matchId);
         // All message types: text, gift_cookies_N, flower_burst, voice_note::url, drawing::url, sticker_pack_*
-        allow create: if request.auth != null
+        allow create: if activeMatchParticipant(matchId)
                    && request.resource.data.senderUid == request.auth.uid;
         allow update, delete: if false;  // messages are immutable once sent
       }
@@ -340,25 +484,107 @@ service cloud.firestore {
       allow read: if request.auth != null
                && request.auth.uid == recipientUid;
       allow create: if request.auth != null
-                 && request.auth.uid == senderUid;
+                 && request.auth.uid == senderUid
+                 && contactAllowed(recipientUid, senderUid) && safetyAllowed(senderUid);
       allow update, delete: if false;
     }
 
 
     // ── Veil Feed Posts ────────────────────────────────────────────────────────
+    function onlyOwnFeedMembership(before, after) {
+      return before == after || (before is list && after is list
+        && after.size() == after.toSet().size()
+        && after.toSet().difference(before.toSet()).hasOnly([request.auth.uid])
+        && before.toSet().difference(after.toSet()).hasOnly([request.auth.uid]));
+    }
+
+    function feedReactionCount(reactions) {
+      let uid = request.auth.uid;
+      return (uid in reactions.get('❤️', []) ? 1 : 0)
+        + (uid in reactions.get('🥀', []) ? 1 : 0)
+        + (uid in reactions.get('🌙', []) ? 1 : 0)
+        + (uid in reactions.get('😂', []) ? 1 : 0)
+        + (uid in reactions.get('🤍', []) ? 1 : 0);
+    }
+
+    function feedReactionUpdate() {
+      let before = resource.data.get('reactions', {});
+      let after = request.resource.data.get('reactions', {});
+      return before is map && after is map
+        && after.diff(before).affectedKeys().hasOnly(['❤️', '🥀', '🌙', '😂', '🤍'])
+        && onlyOwnFeedMembership(before.get('❤️', []), after.get('❤️', []))
+        && onlyOwnFeedMembership(before.get('🥀', []), after.get('🥀', []))
+        && onlyOwnFeedMembership(before.get('🌙', []), after.get('🌙', []))
+        && onlyOwnFeedMembership(before.get('😂', []), after.get('😂', []))
+        && onlyOwnFeedMembership(before.get('🤍', []), after.get('🤍', []))
+        && feedReactionCount(after) == (request.auth.uid in request.resource.data.get('likedBy', []) ? 1 : 0);
+    }
+
+    function feedPollOptionText(option) {
+      return option is string && option.size() >= 1 && option.size() <= 72;
+    }
+
+    function validNewFeedPoll(data) {
+      let options = data.get('pollOptions', []);
+      return !data.keys().hasAny(['pollOptions', 'pollCounts'])
+        || (options is list && options.size() >= 2 && options.size() <= 4
+          && options.toSet().size() == options.size()
+          && feedPollOptionText(options[0]) && feedPollOptionText(options[1])
+          && (options.size() < 3 || feedPollOptionText(options[2]))
+          && (options.size() < 4 || feedPollOptionText(options[3]))
+          && data.caption is string && data.caption.size() >= 1 && data.caption.size() <= 240
+          && data.pollCounts == [0, 0, 0, 0]);
+    }
+
+    function feedPollTallyAdvance(before, after, option) {
+      let counts = before.pollCounts;
+      return option is int && option >= 0 && option < before.pollOptions.size()
+        && after.diff(before).affectedKeys().hasOnly(['pollCounts'])
+        && after.pollCounts is list && after.pollCounts == [
+          counts[0] + (option == 0 ? 1 : 0),
+          counts[1] + (option == 1 ? 1 : 0),
+          counts[2] + (option == 2 ? 1 : 0),
+          counts[3] + (option == 3 ? 1 : 0)
+        ];
+    }
+
+    function validFeedPollUpdate(postId) {
+      let voter = /databases/$(database)/documents/veilPosts/$(postId)/pollVotes/$(request.auth.uid);
+      return resource.data.keys().hasAll(['pollOptions', 'pollCounts'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pollCounts'])
+        && !exists(voter) && existsAfter(voter)
+        && feedPollTallyAdvance(resource.data, request.resource.data, getAfter(voter).data.option);
+    }
+
     match /veilPosts/{postId} {
       allow read: if request.auth != null;
       allow create: if request.auth != null
-                 && request.resource.data.authorUid == request.auth.uid;
-      // Author can update anything on their own post.
-      // Any signed-in user can update ONLY likedBy and/or commentsCount
-      // (toggling likes and posting comments both touch these fields).
+                 && safetyAllowed(request.auth.uid)
+                 && request.resource.data.authorUid == request.auth.uid
+                 && validNewFeedPoll(request.resource.data);
       allow update: if request.auth != null
-                 && (resource.data.authorUid == request.auth.uid
-                  || request.resource.data.diff(resource.data).affectedKeys()
-                       .hasOnly(['likedBy', 'commentsCount']));
+                 && ((resource.data.authorUid == request.auth.uid
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['pollOptions', 'pollCounts'])
+                    && (!resource.data.keys().hasAny(['pollOptions'])
+                      || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['caption'])))
+                  || validFeedPollUpdate(postId)
+                  || (onlyOwnFeedMembership(resource.data.get('likedBy', []), request.resource.data.get('likedBy', []))
+                    && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likedBy', 'commentsCount'])
+                      || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likedBy', 'reactions'])
+                        && feedReactionUpdate()))));
       allow delete: if request.auth != null
                  && resource.data.authorUid == request.auth.uid;
+
+      match /pollVotes/{voterUid} {
+        allow get: if request.auth != null && request.auth.uid == voterUid;
+        allow create: if request.auth != null && request.auth.uid == voterUid
+                     && safetyAllowed(voterUid)
+                     && request.resource.data.keys().hasOnly(['option'])
+                     && feedPollTallyAdvance(
+                       get(/databases/$(database)/documents/veilPosts/$(postId)).data,
+                       getAfter(/databases/$(database)/documents/veilPosts/$(postId)).data,
+                       request.resource.data.option);
+      }
 
       // ── Comments subcollection ────────────────────────────────────────────
       match /comments/{commentId} {
@@ -366,6 +592,7 @@ service cloud.firestore {
         allow read: if request.auth != null;
         // Author can create their own comment (authorUid must match)
         allow create: if request.auth != null
+                   && safetyAllowed(request.auth.uid)
                    && request.resource.data.authorUid == request.auth.uid;
         // Any signed-in user can update likedBy (toggling a comment like)
         // OR increment replyCount (when someone posts a reply)
@@ -382,6 +609,7 @@ service cloud.firestore {
         match /replies/{replyId} {
           allow read:   if request.auth != null;
           allow create: if request.auth != null
+                     && safetyAllowed(request.auth.uid)
                      && request.resource.data.authorUid == request.auth.uid;
           allow update: if request.auth != null
                      && resource.data.authorUid == request.auth.uid;
@@ -397,7 +625,9 @@ service cloud.firestore {
       allow read: if request.auth != null;
       // Sender can create (fromUid must match the creator)
       allow create: if request.auth != null
-                 && request.resource.data.fromUid == request.auth.uid;
+                 && request.resource.data.fromUid == request.auth.uid
+                 && contactAllowed(request.resource.data.fromUid, request.resource.data.toUid)
+                 && safetyAllowed(request.auth.uid);
       // Recipient updates status only (accept / decline)
       allow update: if request.auth != null
                  && resource.data.toUid == request.auth.uid
@@ -470,6 +700,7 @@ service cloud.firestore {
       allow read:   if request.auth != null
                  && resource.data.get("hidden", false) == false;
       allow create: if request.auth != null
+                 && safetyAllowed(request.auth.uid)
                  && request.resource.data.authorId == request.auth.uid;
       allow update: if request.auth != null
                  && (resource.data.authorId == request.auth.uid
@@ -495,6 +726,7 @@ service cloud.firestore {
     match /introvertPosts/{postId}/comments/{commentId} {
       allow read:   if request.auth != null;
       allow create: if request.auth != null
+                 && safetyAllowed(request.auth.uid)
                  && request.resource.data.authorId == request.auth.uid;
       allow update, delete: if request.auth != null
                          && resource.data.authorId == request.auth.uid;
@@ -502,6 +734,7 @@ service cloud.firestore {
       match /replies/{replyId} {
         allow read:   if request.auth != null;
         allow create: if request.auth != null
+                   && safetyAllowed(request.auth.uid)
                    && request.resource.data.authorId == request.auth.uid;
         allow update, delete: if request.auth != null
                            && resource.data.authorId == request.auth.uid;
@@ -739,62 +972,135 @@ service cloud.firestore {
     }
 
     // ── Veil Admin Reports (post & chat reports) ──────────────────────────────
-    // Any authenticated user can create a report. Admin reads via Firebase Console.
+    // Any authenticated user can create their own report.
     // Normal users cannot read, update, or delete reports.
     match /veilReports/{reportId} {
       allow create: if request.auth != null
                  && request.resource.data.reportedBy == request.auth.uid;
-      allow read:   if false;  // admin reads directly in Firebase Console
+      allow read:   if safetyModerator();
       allow update, delete: if false;
     }
 
-    // ── Group Chat Rooms ──────────────────────────────────────────────────────
-    //  Collection: group_rooms/{roomId}
-    //  Sub-coll:   messages/{msgId}
-    //
-    //  Access model:
-    //    - Any signed-in user can READ the rooms list (public discovery)
-    //    - Any signed-in user can CREATE a room (createdBy must match their uid)
-    //    - Members can UPDATE their own room (join, leave, pending add/remove)
-    //    - Creator can UPDATE anything (approve/deny, memberCount, lastMsg, delete)
-    //    - Only creator can DELETE the room (system rooms are protected)
-    //    - Any signed-in user can READ messages (public room model)
-    //    - Only members can CREATE messages (uid must match)
+    // Open group discovery, scoped membership changes, and member chat actions.
+    function groupRoomData(roomId) {
+      return get(/databases/$(database)/documents/group_rooms/$(roomId)).data;
+    }
+
+    function groupMember(roomId) {
+      return request.auth != null
+        && request.auth.uid in groupRoomData(roomId).get('memberUids', []);
+    }
+
+    function validGroupMembership() {
+      let next = request.resource.data;
+      let members = next.get('memberUids', []);
+      let pending = next.get('pendingUids', []);
+      return members is list && pending is list
+        && members.size() == members.toSet().size()
+        && pending.size() == pending.toSet().size()
+        && members.toSet().intersection(pending.toSet()).size() == 0
+        && next.memberCount == members.size();
+    }
+
+    function changeGroupMembership() {
+      let uid = request.auth.uid;
+      let owner = resource.data.get('createdBy', '');
+      let beforeMembers = resource.data.get('memberUids', []).toSet();
+      let afterMembers = request.resource.data.get('memberUids', []).toSet();
+      let beforePending = resource.data.get('pendingUids', []).toSet();
+      let afterPending = request.resource.data.get('pendingUids', []).toSet();
+      let added = afterMembers.difference(beforeMembers);
+      let removed = beforeMembers.difference(afterMembers);
+      let requested = afterPending.difference(beforePending);
+      let cleared = beforePending.difference(afterPending);
+      return validGroupMembership() && (
+        (resource.data.get('joinMode', 'auto') == 'auto'
+          && added == [uid].toSet() && removed.size() == 0
+          && requested.size() == 0 && cleared.difference([uid].toSet()).size() == 0)
+        || (resource.data.get('joinMode', 'auto') == 'approve' && !(uid in beforeMembers)
+          && added.size() == 0 && removed.size() == 0
+          && requested == [uid].toSet() && cleared.size() == 0)
+        || (added.size() == 0 && requested.size() == 0
+          && ((uid != owner && removed == [uid].toSet() && cleared.size() == 0)
+            || (removed.size() == 0 && cleared == [uid].toSet())))
+        || (uid == owner && requested.size() == 0 && !(uid in removed)
+          && added.difference(cleared).size() == 0
+          && (removed.size() + cleared.size()) <= 1)
+      );
+    }
+
+    match /group_push_devices/{uid} {
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['token', 'updatedAt'])
+        && request.resource.data.token is string
+        && request.resource.data.token.size() > 0 && request.resource.data.token.size() <= 1024
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
     match /group_rooms/{roomId} {
-      // Any signed-in user can read the room list / individual room
       allow read: if request.auth != null;
+      allow create: if request.auth != null && safetyAllowed(request.auth.uid)
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.get('isSystem', false) == false
+        && request.resource.data.memberUids == [request.auth.uid]
+        && request.resource.data.get('pendingUids', []) == []
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 40
+        && request.resource.data.get('description', '').size() <= 200
+        && request.resource.data.get('joinMode', 'auto') in ['auto', 'approve']
+        && validGroupMembership();
 
-      // Any signed-in user can create a room — createdBy must be themselves
-      allow create: if request.auth != null
-                 && request.resource.data.createdBy == request.auth.uid;
+      allow update: if request.auth != null && safetyAllowed(request.auth.uid)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['memberUids', 'memberCount', 'pendingUids'])
+        && changeGroupMembership();
 
-      // Creator can update anything (approve, deny, kick, update lastMsg, etc.)
-      // Any signed-in user can update memberUids/pendingUids/memberCount
-      // (needed for join & request-to-join flows from the access-gate screen)
-      allow update: if request.auth != null
-                 && (
-                   resource.data.createdBy == request.auth.uid
-                   || request.resource.data.diff(resource.data).affectedKeys()
-                        .hasAny(['memberUids', 'pendingUids', 'memberCount',
-                                 'lastMsg', 'lastMsgAt'])
-                 );
+      allow update: if request.auth != null && safetyAllowed(request.auth.uid)
+        && request.auth.uid in resource.data.get('memberUids', [])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMsg', 'lastMsgAt', 'lastMsgUid'])
+        && request.resource.data.lastMsg is string && request.resource.data.lastMsg.size() <= 60
+        && (resource.data.get('joinMode', 'auto') != 'approve' || request.resource.data.lastMsg == 'New message')
+        && request.resource.data.lastMsgAt is timestamp
+        && (request.resource.data.get('lastMsgUid', '') == request.auth.uid
+          || request.resource.data.get('lastMsgUid', '') == resource.data.get('lastMsgUid', ''));
 
-      // Only creator can delete — and system rooms are protected
-      allow delete: if request.auth != null
-                 && resource.data.createdBy == request.auth.uid
-                 && resource.data.get('isSystem', false) == false;
+      allow update: if request.auth != null && safetyAllowed(request.auth.uid)
+        && resource.data.get('createdBy', '') == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'description', 'joinMode', 'announcement'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 40
+        && request.resource.data.get('description', '').size() <= 200
+        && request.resource.data.get('joinMode', 'auto') in ['auto', 'approve']
+        && request.resource.data.get('announcement', '') is string
+        && request.resource.data.get('announcement', '').size() <= 280;
 
-      // ── Messages subcollection ─────────────────────────────────────────────
+      allow delete: if request.auth != null && resource.data.createdBy == request.auth.uid
+        && resource.data.get('isSystem', false) == false;
+
       match /messages/{messageId} {
-        // Any signed-in user can read messages (rooms are public)
-        allow read: if request.auth != null;
+        allow read: if request.auth != null
+          && (groupRoomData(roomId).get('joinMode', 'auto') == 'auto' || groupMember(roomId));
 
-        // Only signed-in users can create — uid field must match the writer
-        allow create: if request.auth != null
-                   && request.resource.data.uid == request.auth.uid;
+        allow create: if groupMember(roomId) && safetyAllowed(request.auth.uid)
+          && request.resource.data.keys().hasOnly(['uid', 'alias', 'text', 'sentAt', 'replyToId', 'replyToAlias', 'replyToText', 'pushViaRelay'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.alias is string && request.resource.data.alias.size() <= 80
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 2000
+          && request.resource.data.sentAt is timestamp
+          && request.resource.data.get('pushViaRelay', false) is bool
+          && request.resource.data.get('replyToId', '').matches('^[A-Za-z0-9_-]{0,128}$')
+          && request.resource.data.get('replyToAlias', '').size() <= 80
+          && request.resource.data.get('replyToText', '').size() <= 120;
 
-        // Messages are immutable once sent
-        allow update, delete: if false;
+        allow update: if groupMember(roomId) && safetyAllowed(request.auth.uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+          && request.resource.data.get('reactions', {}) is map
+          && request.resource.data.get('reactions', {}).diff(resource.data.get('reactions', {}))
+            .affectedKeys().hasOnly([request.auth.uid])
+          && (!(request.auth.uid in request.resource.data.get('reactions', {}))
+            || request.resource.data.reactions[request.auth.uid] in ['❤️', '😂', '🙌', '🤍', '✨', '👍']);
       }
     }
 

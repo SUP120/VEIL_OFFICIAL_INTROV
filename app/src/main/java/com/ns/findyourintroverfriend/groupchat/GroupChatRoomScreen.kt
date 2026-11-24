@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,7 +23,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -33,30 +36,33 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import android.content.Intent
+import android.provider.Settings
+import com.ns.findyourintroverfriend.notifications.GroupPushNotification
 import com.ns.findyourintroverfriend.util.LocalVeilIsDark
+import com.ns.findyourintroverfriend.ui.theme.currentProfilePalette
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 
 // ── Theme tokens ──────────────────────────────────────────────────────────────
-private var _gcDark by mutableStateOf(true)
-
-private val GcBg          get() = if (_gcDark) Color(0xFF0D0D0F) else Color(0xFFF4F4F6)
-private val GcCard        get() = if (_gcDark) Color(0xFF17171C) else Color(0xFFFFFFFF)
-private val GcBorder      get() = if (_gcDark) Color(0xFF252530) else Color(0xFFE2E2E8)
-private val GcPrimary     get() = if (_gcDark) Color(0xFFEEEEF4) else Color(0xFF0E0E14)
-private val GcSub         get() = if (_gcDark) Color(0xFF8A8A96) else Color(0xFF6C6C78)
-private val GcMuted       get() = if (_gcDark) Color(0xFF44444C) else Color(0xFFC0C0C8)
-private val GcMyBubble    get() = if (_gcDark) Color(0xFF242430) else Color(0xFF1A1A1A)
-private val GcTheirBubble get() = if (_gcDark) Color(0xFF1E1E26) else Color(0xFFEEEEF2)
-private val GcMyText      get() = Color(0xFFE8E8F0)
-private val GcTheirText   get() = if (_gcDark) Color(0xFFDDDDE8) else Color(0xFF0E0E14)
-private val GcInputBg     get() = if (_gcDark) Color(0xFF17171C) else Color(0xFFFFFFFF)
-private val GcAccent      get() = if (_gcDark) Color(0xFFEEEEF4) else Color(0xFF0E0E14)
-private val GcReplyBar    get() = if (_gcDark) Color(0xFF13131A) else Color(0xFFF0F0F6)
+private val GcBg: Color @Composable get() = currentProfilePalette.background
+private val GcCard: Color @Composable get() = currentProfilePalette.card
+private val GcBorder: Color @Composable get() = currentProfilePalette.border
+private val GcPrimary: Color @Composable get() = currentProfilePalette.text
+private val GcSub: Color @Composable get() = currentProfilePalette.secondaryText
+private val GcMuted: Color @Composable get() = currentProfilePalette.secondaryText
+private val GcMyBubble: Color @Composable get() = currentProfilePalette.tintedSurface
+private val GcTheirBubble: Color @Composable get() = currentProfilePalette.card
+private val GcMyText: Color @Composable get() = currentProfilePalette.text
+private val GcTheirText: Color @Composable get() = currentProfilePalette.text
+private val GcInputBg: Color @Composable get() = currentProfilePalette.background
+private val GcAccent: Color @Composable get() = currentProfilePalette.accent
+private val GcReplyBar: Color @Composable get() = currentProfilePalette.tintedSurface
 
 // ── Draw helpers ──────────────────────────────────────────────────────────────
 private fun Modifier.bottomBorder(w: Dp, c: Color) = drawBehind {
@@ -93,8 +99,11 @@ fun GroupChatRoomScreen(
     onOpenProfile : (uid: String) -> Unit = {},
     vm            : GroupChatRoomViewModel = viewModel()
 ) {
-    val dark = LocalVeilIsDark.current
-    SideEffect { _gcDark = dark }
+    DisposableEffect(roomId) {
+        val tracker = com.ns.findyourintroverfriend.notifications.ActiveChatTracker
+        tracker.activeGroupRoomId = roomId
+        onDispose { if (tracker.activeGroupRoomId == roomId) tracker.activeGroupRoomId = null }
+    }
 
     LaunchedEffect(roomId) { vm.init(roomId) }
 
@@ -106,11 +115,28 @@ fun GroupChatRoomScreen(
     val inviteUsers   by vm.inviteUsers.collectAsStateWithLifecycle()
     val inviteLoading by vm.inviteLoading.collectAsStateWithLifecycle()
     val userProfiles  by vm.userProfiles.collectAsStateWithLifecycle()
+    val roomError     by vm.roomError.collectAsStateWithLifecycle()
+    val messageError  by vm.messageError.collectAsStateWithLifecycle()
+    val actionError   by vm.actionError.collectAsStateWithLifecycle()
+    val hasOlder      by vm.hasOlder.collectAsStateWithLifecycle()
+    val loadingOlder  by vm.loadingOlder.collectAsStateWithLifecycle()
+    val preferences   by vm.preferences.collectAsStateWithLifecycle()
 
-    var draft         by remember { mutableStateOf("") }
+    var draft         by rememberSaveable(roomId) { mutableStateOf("") }
     var replyDraft    by remember { mutableStateOf<ReplyDraft?>(null) }
-    val keyboard      = LocalSoftwareKeyboardController.current
     val listState     = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+    val snackbar = remember { SnackbarHostState() }
+    var inForeground by remember { mutableStateOf(true) }
+    var searchOpen by rememberSaveable { mutableStateOf(false) }
+    var search by rememberSaveable { mutableStateOf("") }
+    var optionsOpen by remember { mutableStateOf(false) }
+    var alertSettingsOpen by remember { mutableStateOf(false) }
+    var announcementOpen by remember { mutableStateOf(false) }
+    var leaveOpen by remember { mutableStateOf(false) }
+    var messageActions by remember { mutableStateOf<GroupMessage?>(null) }
 
     var showInviteSheet  by remember { mutableStateOf(false) }
     var showMembersSheet by remember { mutableStateOf(false) }
@@ -120,9 +146,31 @@ fun GroupChatRoomScreen(
     val isCreator = room?.createdBy == vm.myUid
     val isMember  = vm.myUid in (room?.memberUids  ?: emptyList())
     val isPending = vm.myUid in (room?.pendingUids ?: emptyList())
-
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1)
+    val nearLatest by remember { derivedStateOf { listState.firstVisibleItemIndex <= 1 } }
+    val displayMessages = remember(messages, search) {
+        if (search.isBlank()) messages.asReversed() else messages.asReversed().filter {
+            it.text.contains(search.trim(), ignoreCase = true) || it.alias.contains(search.trim(), ignoreCase = true)
+        }
+    }
+    val newest = messages.lastOrNull()
+    val starter = remember(roomId) { groupConversationStarter(roomId) }
+    LifecycleResumeEffect(roomId) {
+        inForeground = true
+        onPauseOrDispose { inForeground = false }
+    }
+    LaunchedEffect(newest?.id) {
+        if (newest != null && !searchOpen && (nearLatest || newest.uid == vm.myUid)) listState.scrollToItem(0)
+    }
+    LaunchedEffect(newest?.sentAt, nearLatest, searchOpen, inForeground, isMember) {
+        if (inForeground && isMember && nearLatest && !searchOpen) {
+            newest?.let { vm.markRead(it.sentAt) }
+            GroupPushNotification.cancel(context, vm.myUid, roomId)
+        }
+    }
+    LaunchedEffect(actionError) {
+        val error = actionError ?: return@LaunchedEffect
+        snackbar.showSnackbar(error)
+        vm.clearActionError()
     }
 
     Column(
@@ -166,10 +214,14 @@ fun GroupChatRoomScreen(
                     fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
                     color = GcPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    "${room?.memberCount ?: 0} members · tap to view",
-                    fontSize = 11.sp, color = GcSub
-                )
+                room?.let {
+                    val alertLabel = when (preferences.notificationMode) {
+                        "muted" -> " · Muted"
+                        "replies" -> " · Replies only"
+                        else -> ""
+                    }
+                    Text("${it.memberCount} members$alertLabel", fontSize = 11.sp, color = GcSub)
+                }
             }
 
             if (isMember) {
@@ -177,7 +229,7 @@ fun GroupChatRoomScreen(
                     onClick  = { vm.loadInviteConnections(); showInviteSheet = true },
                     modifier = Modifier.size(36.dp)
                 ) {
-                    Icon(Icons.Rounded.PersonAdd, null, tint = GcSub, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Rounded.PersonAdd, "Invite people", tint = GcSub, modifier = Modifier.size(18.dp))
                 }
             }
             if (isCreator) {
@@ -185,10 +237,41 @@ fun GroupChatRoomScreen(
                     onClick  = { showMembersSheet = true },
                     modifier = Modifier.size(36.dp)
                 ) {
-                    Icon(Icons.Rounded.ManageAccounts, null, tint = GcSub, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Rounded.ManageAccounts, "Manage members", tint = GcSub, modifier = Modifier.size(18.dp))
+                }
+            }
+            if (isMember) {
+                Box {
+                    IconButton(onClick = { optionsOpen = true }, modifier = Modifier.size(40.dp)) {
+                        Icon(Icons.Rounded.MoreVert, "Group options", tint = GcPrimary)
+                    }
+                    DropdownMenu(optionsOpen, { optionsOpen = false }, containerColor = GcCard) {
+                        GroupMenuItem("Notification settings") { optionsOpen = false; alertSettingsOpen = true }
+                        GroupMenuItem(if (searchOpen) "Close search" else "Search messages") {
+                            optionsOpen = false
+                            searchOpen = !searchOpen
+                            search = ""
+                        }
+                        GroupMenuItem(if (preferences.pinned) "Unpin from My Groups" else "Pin in My Groups") {
+                            optionsOpen = false
+                            vm.setGroupPinned(!preferences.pinned)
+                        }
+                        GroupMenuItem("Use a conversation starter") {
+                            optionsOpen = false
+                            if (draft.isBlank()) draft = starter else scope.launch {
+                                snackbar.showSnackbar("Finish your draft before adding a starter.")
+                            }
+                        }
+                        if (isCreator) {
+                            GroupMenuItem("Set group announcement") { optionsOpen = false; announcementOpen = true }
+                        } else {
+                            GroupMenuItem("Leave group") { optionsOpen = false; leaveOpen = true }
+                        }
+                    }
                 }
             }
         }
+        SnackbarHost(snackbar)
 
         // ── Pending join requests ─────────────────────────────────────────────
         AnimatedVisibility(
@@ -198,7 +281,7 @@ fun GroupChatRoomScreen(
         ) {
             Column(
                 Modifier.fillMaxWidth()
-                    .background(if (_gcDark) Color(0xFF13131A) else Color(0xFFF8F8FC))
+                    .background(GcReplyBar)
                     .bottomBorder(0.6.dp, GcBorder)
                     .padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -233,7 +316,14 @@ fun GroupChatRoomScreen(
             val r = room
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 if (r == null) {
-                    CircularProgressIndicator(color = GcSub, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
+                    if (roomError) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("This group couldn't be opened.", color = GcPrimary)
+                            TextButton(onClick = vm::reloadRoom) { Text("Retry", color = GcAccent) }
+                        }
+                    } else {
+                        CircularProgressIndicator(color = GcSub, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
+                    }
                 } else {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -285,41 +375,82 @@ fun GroupChatRoomScreen(
                     Icon(Icons.Rounded.HourglassTop, null, tint = GcMuted, modifier = Modifier.size(40.dp))
                     Text("Request Sent", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = GcPrimary)
                     Text("Waiting for the creator to approve.", fontSize = 13.sp, color = GcSub)
+                    TextButton(onClick = vm::cancelJoinRequest) { Text("Cancel request", color = GcAccent) }
                 }
             }
             return@Column
         }
 
-        // ── Messages ──────────────────────────────────────────────────────────
+        val announcement = room?.announcement.orEmpty()
+        if (announcement.isNotBlank()) {
+            Surface(color = GcReplyBar, modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(Icons.Rounded.PushPin, contentDescription = "Pinned announcement", tint = GcAccent, modifier = Modifier.size(18.dp))
+                    Text(announcement, color = GcPrimary, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+        if (searchOpen) {
+            OutlinedTextField(
+                value = search, onValueChange = { search = it.take(80) }, singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
+                placeholder = { Text("Search loaded messages", color = GcSub) },
+                trailingIcon = {
+                    IconButton(onClick = { search = ""; searchOpen = false }) {
+                        Icon(Icons.Rounded.Close, "Close search", tint = GcPrimary)
+                    }
+                },
+                colors = groupFieldColors()
+            )
+        }
+
         Box(Modifier.weight(1f)) {
             when {
                 msgLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = GcSub, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
                 }
-                messages.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                messages.isEmpty() && !messageError -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(Icons.Rounded.ChatBubbleOutline, null, tint = GcMuted, modifier = Modifier.size(44.dp))
-                        Text("No messages yet", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = GcSub)
-                        Text("Be the first to say something 👋", fontSize = 12.sp, color = GcMuted)
+                        Text("Start the conversation", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = GcPrimary)
+                        TextButton(onClick = { if (draft.isBlank()) draft = starter }, enabled = draft.isBlank()) {
+                            Text(starter, color = GcAccent, textAlign = TextAlign.Center)
+                        }
                     }
                 }
                 else -> LazyColumn(
                     state          = listState,
+                    reverseLayout  = true,
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 16.dp)
                 ) {
-                    itemsIndexed(messages, key = { _, m -> m.id }) { index, msg ->
+                    if (messageError) item(key = "group-message-error") {
+                        TextButton(onClick = vm::retryMessages) { Text("Couldn't sync messages. Retry", color = GcAccent) }
+                    }
+                    if (displayMessages.isEmpty() && search.isNotBlank()) item(key = "group-no-results") {
+                        Text("No matches in loaded messages.", color = GcSub, modifier = Modifier.padding(14.dp))
+                    }
+                    itemsIndexed(displayMessages, key = { _, m -> m.id }) { index, msg ->
                         val isMe       = msg.uid == vm.myUid
                         val profile    = userProfiles[msg.uid]
                         val photoUrl   = profile?.second ?: ""
                         val alias      = profile?.first  ?: msg.alias
-                        val prevMsg    = messages.getOrNull(index - 1)
-                        val nextMsg    = messages.getOrNull(index + 1)
-                        val showHeader = !isMe && (prevMsg == null || prevMsg.uid != msg.uid)
+                        val prevMsg    = displayMessages.getOrNull(index + 1)
+                        val nextMsg    = displayMessages.getOrNull(index - 1)
+                        val newDay     = prevMsg == null || groupDay(prevMsg.sentAt.toDate()) != groupDay(msg.sentAt.toDate())
+                        val showHeader = !isMe && (newDay || prevMsg?.uid != msg.uid)
                         val isLast     = nextMsg == null || nextMsg.uid != msg.uid
                         val isFirst    = prevMsg == null || prevMsg.uid != msg.uid
                         val topPad     = if (isFirst) 8.dp else 2.dp
                         val bottomPad  = if (isLast)  2.dp else 1.dp
 
+                        if (newDay && search.isBlank()) {
+                            Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalArrangement = Arrangement.Center) {
+                                Text(groupDay(msg.sentAt.toDate()), style = MaterialTheme.typography.labelMedium, color = GcSub)
+                            }
+                        }
                         SwipeableMessageItem(
                             msg           = msg,
                             isMe          = isMe,
@@ -330,6 +461,16 @@ fun GroupChatRoomScreen(
                             topPad        = topPad,
                             bottomPad     = bottomPad,
                             onAvatarClick = { onOpenProfile(msg.uid) },
+                            myUid         = vm.myUid,
+                            onActions     = { messageActions = msg },
+                            onReact       = { vm.react(msg, it) },
+                            onQuoteClick  = {
+                                val target = displayMessages.indexOfFirst { it.id == msg.replyToId }
+                                scope.launch {
+                                    if (target >= 0) listState.animateScrollToItem(target + if (messageError) 1 else 0)
+                                    else snackbar.showSnackbar("Load older messages to find the original.")
+                                }
+                            },
                             onReply       = {
                                 replyDraft = ReplyDraft(
                                     msgId = msg.id,
@@ -339,6 +480,22 @@ fun GroupChatRoomScreen(
                             }
                         )
                     }
+                    if (hasOlder) item(key = "group-earlier") {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                            TextButton(onClick = vm::loadEarlier, enabled = !loadingOlder) {
+                                Text(if (loadingOlder) "Loading…" else "Load earlier messages", color = GcAccent)
+                            }
+                        }
+                    }
+                }
+            }
+            if (!nearLatest && !searchOpen && messages.isNotEmpty()) {
+                Surface(
+                    onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+                    color = GcCard, border = BorderStroke(1.dp, GcBorder), shape = CircleShape, shadowElevation = 2.dp
+                ) {
+                    Text("Latest", color = GcAccent, modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp))
                 }
             }
         }
@@ -401,7 +558,7 @@ fun GroupChatRoomScreen(
             ) {
                 BasicTextField(
                     value           = draft,
-                    onValueChange   = { draft = it },
+                    onValueChange   = { draft = it.take(GROUP_MESSAGE_LIMIT) },
                     singleLine      = false,
                     maxLines        = 5,
                     textStyle       = TextStyle(fontSize = 14.sp, color = GcPrimary, lineHeight = 20.sp),
@@ -424,15 +581,10 @@ fun GroupChatRoomScreen(
                         val t = draft.trim()
                         if (t.isNotBlank()) {
                             val rd = replyDraft
-                            vm.send(
-                                text         = t,
-                                replyToId    = rd?.msgId ?: "",
-                                replyToAlias = rd?.alias ?: "",
-                                replyToText  = rd?.text  ?: ""
-                            )
-                            draft      = ""
-                            replyDraft = null
-                            keyboard?.hide()
+                            vm.send(t, rd?.msgId) {
+                                if (draft.trim() == t) draft = ""
+                                if (replyDraft == rd) replyDraft = null
+                            }
                         }
                     },
                 contentAlignment = Alignment.Center
@@ -441,8 +593,8 @@ fun GroupChatRoomScreen(
                     CircularProgressIndicator(color = GcSub, strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
                 } else {
                     Icon(
-                        Icons.Rounded.ArrowUpward, null,
-                        tint = if (draft.isNotBlank()) GcBg else GcMuted,
+                        Icons.Rounded.ArrowUpward, "Send message",
+                        tint = if (draft.isNotBlank()) currentProfilePalette.onAccent else GcMuted,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -457,7 +609,7 @@ fun GroupChatRoomScreen(
             containerColor   = GcCard,
             title = { Text("Delete Room", color = GcPrimary, fontWeight = FontWeight.Bold) },
             text  = {
-                Text("This will permanently delete \"${room?.name}\" and all its messages.", color = GcSub, fontSize = 13.sp)
+                Text("This removes \"${room?.name}\" from VEIL and makes its messages unavailable.", color = GcSub, fontSize = 13.sp)
             },
             confirmButton = {
                 TextButton(onClick = { vm.deleteRoom { onBack() }; showDeleteDialog = false }) {
@@ -502,6 +654,133 @@ fun GroupChatRoomScreen(
             onDismiss    = { showMemberList = false }
         )
     }
+    if (alertSettingsOpen) {
+        AlertDialog(
+            onDismissRequest = { alertSettingsOpen = false },
+            containerColor = GcCard,
+            title = { Text("Group notifications", color = GcPrimary) },
+            text = {
+                Column {
+                    listOf("all" to "All messages", "replies" to "Replies to me", "muted" to "Muted").forEach { (mode, label) ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                vm.setNotificationMode(mode)
+                                alertSettingsOpen = false
+                            },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = mode == preferences.notificationMode,
+                                onClick = null,
+                                modifier = Modifier.padding(12.dp),
+                                colors = RadioButtonDefaults.colors(selectedColor = GcAccent, unselectedColor = GcSub)
+                            )
+                            Text(label, color = GcPrimary)
+                        }
+                    }
+                    TextButton(onClick = {
+                        GroupPushNotification.createChannel(context)
+                        context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+                    }) { Text("Android notification settings", color = GcAccent) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { alertSettingsOpen = false }) { Text("Done", color = GcAccent) } }
+        )
+    }
+    if (announcementOpen) {
+        var edited by rememberSaveable { mutableStateOf(room?.announcement.orEmpty()) }
+        AlertDialog(
+            onDismissRequest = { announcementOpen = false },
+            containerColor = GcCard,
+            title = { Text("Group announcement", color = GcPrimary) },
+            text = {
+                OutlinedTextField(
+                    value = edited, onValueChange = { edited = it.take(280) },
+                    label = { Text("Visible at the top of chat", color = GcSub) },
+                    supportingText = { Text("${edited.length}/280", color = GcSub) },
+                    maxLines = 5, colors = groupFieldColors(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.saveAnnouncement(edited) { announcementOpen = false } }) {
+                    Text(if (edited.isBlank()) "Clear announcement" else "Save", color = GcAccent)
+                }
+            },
+            dismissButton = { TextButton(onClick = { announcementOpen = false }) { Text("Cancel", color = GcSub) } }
+        )
+    }
+    if (leaveOpen) {
+        AlertDialog(
+            onDismissRequest = { leaveOpen = false },
+            containerColor = GcCard,
+            title = { Text("Leave ${room?.name ?: "this group"}?", color = GcPrimary) },
+            text = { Text("You'll stop receiving messages from this group.", color = GcSub) },
+            confirmButton = {
+                TextButton(onClick = { vm.leaveGroup(onBack); leaveOpen = false }) { Text("Leave group", color = GcAccent) }
+            },
+            dismissButton = { TextButton(onClick = { leaveOpen = false }) { Text("Cancel", color = GcSub) } }
+        )
+    }
+    messageActions?.let { message ->
+        AlertDialog(
+            onDismissRequest = { messageActions = null },
+            containerColor = GcCard,
+            title = { Text("Message options", color = GcPrimary) },
+            text = {
+                Column {
+                    Text(message.text, color = GcSub, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        groupReactions.forEach { emoji ->
+                            IconButton(onClick = { vm.react(message, emoji); messageActions = null }, modifier = Modifier.size(36.dp)) {
+                                Text(emoji, fontSize = 18.sp)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    replyDraft = ReplyDraft(message.id, message.alias, message.text)
+                    messageActions = null
+                }) { Text("Reply", color = GcAccent) }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    clipboard.setText(AnnotatedString(message.text))
+                    messageActions = null
+                }) { Text("Copy", color = GcAccent) }
+            }
+        )
+    }
+}
+
+@Composable
+private fun GroupMenuItem(label: String, onClick: () -> Unit) {
+    DropdownMenuItem(text = { Text(label, color = GcPrimary) }, onClick = onClick)
+}
+
+@Composable
+private fun groupFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = GcPrimary, unfocusedTextColor = GcPrimary,
+    focusedBorderColor = GcAccent, unfocusedBorderColor = GcBorder,
+    focusedContainerColor = GcCard, unfocusedContainerColor = GcCard,
+    cursorColor = GcAccent
+)
+
+private fun groupDay(date: Date): String = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(date)
+
+private fun groupConversationStarter(roomId: String): String {
+    val starters = listOf(
+        "What's one small win you had this week?",
+        "What kind of day did you have in three words?",
+        "What song would you put on a playlist for this group?",
+        "What's a low-key way you like to spend a Sunday?",
+        "What's something you've changed your mind about recently?"
+    )
+    val day = java.time.LocalDate.now().toEpochDay().toInt()
+    return starters[Math.floorMod(roomId.hashCode() + day, starters.size)]
 }
 
 // ── Swipeable message item ────────────────────────────────────────────────────
@@ -516,6 +795,10 @@ private fun SwipeableMessageItem(
     topPad       : Dp,
     bottomPad    : Dp,
     onAvatarClick: () -> Unit,
+    myUid        : String,
+    onActions    : () -> Unit,
+    onReact      : (String) -> Unit,
+    onQuoteClick : () -> Unit,
     onReply      : () -> Unit
 ) {
     val swipeOffset     = remember { Animatable(0f) }
@@ -582,7 +865,11 @@ private fun SwipeableMessageItem(
                 photoUrl      = photoUrl,
                 showAvatar    = showAvatar,
                 showName      = showName,
-                onAvatarClick = onAvatarClick
+                onAvatarClick = onAvatarClick,
+                myUid         = myUid,
+                onActions     = onActions,
+                onReact       = onReact,
+                onQuoteClick  = onQuoteClick
             )
         }
     }
@@ -590,6 +877,7 @@ private fun SwipeableMessageItem(
 
 // ── Message bubble ────────────────────────────────────────────────────────────
 @Composable
+@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
 private fun GroupMessageItem(
     msg          : GroupMessage,
     isMe         : Boolean,
@@ -597,7 +885,11 @@ private fun GroupMessageItem(
     photoUrl     : String,
     showAvatar   : Boolean,
     showName     : Boolean,
-    onAvatarClick: () -> Unit
+    onAvatarClick: () -> Unit,
+    myUid        : String,
+    onActions    : () -> Unit,
+    onReact      : (String) -> Unit,
+    onQuoteClick : () -> Unit
 ) {
     val timeStr = remember(msg.sentAt) {
         SimpleDateFormat("h:mm a", Locale.getDefault()).format(msg.sentAt.toDate())
@@ -641,13 +933,15 @@ private fun GroupMessageItem(
                         )
                     )
                     .background(if (isMe) GcMyBubble else GcTheirBubble)
+                    .combinedClickable(onClickLabel = "Message options", onClick = onActions, onLongClick = onActions)
             ) {
                 // Quoted reply block
                 if (hasReply) {
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .background(if (isMe) Color(0xFF1A1A22) else if (_gcDark) Color(0xFF16161E) else Color(0xFFE4E4EC))
+                            .background(GcBg)
+                            .clickable(onClickLabel = "Jump to the original message", onClick = onQuoteClick)
                             .padding(start = 10.dp, top = 6.dp, end = 10.dp, bottom = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -674,6 +968,26 @@ private fun GroupMessageItem(
                 )
             }
 
+            if (msg.reactions.isNotEmpty()) {
+                val totals = msg.reactions.values.groupingBy { it }.eachCount()
+                FlowRow(
+                    modifier = Modifier.padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    totals.forEach { (emoji, count) ->
+                        val selected = msg.reactions[myUid] == emoji
+                        Surface(
+                            onClick = { onReact(emoji) },
+                            color = if (selected) GcReplyBar else GcCard,
+                            shape = CircleShape,
+                            border = BorderStroke(1.dp, if (selected) GcAccent else GcBorder)
+                        ) {
+                            Text("$emoji $count", color = GcPrimary, fontSize = 11.sp,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                        }
+                    }
+                }
+            }
             Text(
                 timeStr,
                 fontSize = 10.sp, color = GcMuted,
@@ -794,7 +1108,7 @@ private fun GroupMemberListScreen(
                             Box(
                                 Modifier
                                     .clip(RoundedCornerShape(6.dp))
-                                    .background(if (_gcDark) Color(0xFF1E1E28) else Color(0xFFEEEEF4))
+                                    .background(if (LocalVeilIsDark.current) Color(0xFF1E1E28) else Color(0xFFEEEEF4))
                                     .padding(horizontal = 8.dp, vertical = 3.dp)
                             ) {
                                 Text("Admin", fontSize = 10.sp, fontWeight = FontWeight.SemiBold, color = GcSub)
@@ -911,7 +1225,7 @@ private fun GroupInviteSheet(
                 Modifier.fillMaxWidth()
                     .padding(start = 16.dp, end = 16.dp, bottom = 10.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(if (_gcDark) Color(0xFF13131A) else Color(0xFFF0F0F6))
+                    .background(if (LocalVeilIsDark.current) Color(0xFF13131A) else Color(0xFFF0F0F6))
                     .border(0.8.dp, GcBorder, RoundedCornerShape(14.dp))
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -963,19 +1277,19 @@ private fun GroupInviteSheet(
                             val isSel = user.uid in selected
                             val badgeText = if (user.source == "friend") "Feed Friend" else "Swipe Match"
                             val badgeBg = if (user.source == "friend")
-                                if (_gcDark) Color(0xFF1A2A1A) else Color(0xFFEAF5EA)
+                                if (LocalVeilIsDark.current) Color(0xFF1A2A1A) else Color(0xFFEAF5EA)
                             else
-                                if (_gcDark) Color(0xFF1A1A2A) else Color(0xFFEAEAF5)
+                                if (LocalVeilIsDark.current) Color(0xFF1A1A2A) else Color(0xFFEAEAF5)
                             val badgeText2Color = if (user.source == "friend")
-                                if (_gcDark) Color(0xFF6EBF6E) else Color(0xFF3A8C3A)
+                                if (LocalVeilIsDark.current) Color(0xFF6EBF6E) else Color(0xFF3A8C3A)
                             else
-                                if (_gcDark) Color(0xFF8A8AE8) else Color(0xFF4A4AAA)
+                                if (LocalVeilIsDark.current) Color(0xFF8A8AE8) else Color(0xFF4A4AAA)
 
                             Row(
                                 Modifier.fillMaxWidth()
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(
-                                        if (isSel) (if (_gcDark) Color(0xFF1E1E2C) else Color(0xFFE8E8F4))
+                                        if (isSel) (if (LocalVeilIsDark.current) Color(0xFF1E1E2C) else Color(0xFFE8E8F4))
                                         else Color.Transparent
                                     )
                                     .border(1.dp, if (isSel) GcSub.copy(alpha = 0.4f) else Color.Transparent, RoundedCornerShape(14.dp))
@@ -1068,7 +1382,7 @@ private fun GroupMembersSheet(
                     Row(
                         Modifier.fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(if (_gcDark) Color(0xFF13131A) else Color(0xFFF8F8FC))
+                            .background(GcReplyBar)
                             .clickable { if (!isMe) onOpenProfile(uid) }
                             .padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -1102,7 +1416,7 @@ private fun GroupMembersSheet(
                 Box(
                     Modifier.fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
-                        .background(if (_gcDark) Color(0xFF1A0909) else Color(0xFFFFF2F2))
+                        .background(if (LocalVeilIsDark.current) Color(0xFF1A0909) else Color(0xFFFFF2F2))
                         .border(1.dp, Color(0xFFD94F4F).copy(0.3f), RoundedCornerShape(14.dp))
                         .clickable(onClick = onDeleteRoom)
                         .padding(horizontal = 16.dp, vertical = 14.dp),

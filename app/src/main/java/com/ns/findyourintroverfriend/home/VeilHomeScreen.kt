@@ -134,9 +134,11 @@ import com.google.firebase.firestore.FirebaseFirestore
 
 
 import com.ns.findyourintroverfriend.R
+import com.ns.findyourintroverfriend.feed.peopleProfileFields
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.update
 
 
-import com.airbnb.lottie.compose.*
 
 
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -169,6 +171,9 @@ import com.ns.findyourintroverfriend.util.LocalVeilIsDark
 
 
 
+internal const val DISPLAY_NAME_MIN_LENGTH = 2
+internal const val DISPLAY_NAME_MAX_LENGTH = 24
+
 // Data model 
 
 
@@ -182,6 +187,8 @@ data class VeilHomeUiState(
 
 
  val photoUrl : String = "",
+
+ val joinedAt : Long = 0L,
 
 
  val roomsCompleted : Int = 0,
@@ -267,6 +274,12 @@ class VeilHomeViewModel : ViewModel() {
 
  photoUrl = doc.getString("photoUrl")?.takeIf { it.isNotBlank() } ?: authPhotoUrl,
 
+ joinedAt = when (val joined = doc.get("createdAt") ?: doc.get("joinedAt")) {
+     is com.google.firebase.Timestamp -> joined.toDate().time
+     is Number -> joined.toLong()
+     else -> 0L
+ },
+
 
  roomsCompleted = 0,
 
@@ -315,6 +328,48 @@ class VeilHomeViewModel : ViewModel() {
 
 
 
+
+ internal suspend fun saveDisplayName(input: String): String? {
+    val alias = input.trim()
+    if (alias.length !in DISPLAY_NAME_MIN_LENGTH..DISPLAY_NAME_MAX_LENGTH) {
+        return "Use a display name between $DISPLAY_NAME_MIN_LENGTH and $DISPLAY_NAME_MAX_LENGTH characters."
+    }
+    if (alias.any(Char::isISOControl)) return "Enter a display name on one line."
+    val uid = auth.currentUser?.uid ?: return "Sign in to edit your display name."
+    val user = db.collection("users").document(uid)
+    val peopleSettings = db.collection("peopleSettings").document(uid)
+    val peopleProfile = db.collection("peopleProfiles").document(uid)
+    val swipeProfile = db.collection("swipeProfiles").document(uid)
+    return try {
+        val saved = db.runTransaction { transaction ->
+            val current = transaction.get(user)
+            if (!current.exists()) return@runTransaction false
+
+            val settings = transaction.get(peopleSettings)
+            val swipe = transaction.get(swipeProfile)
+            val oldName = current.getString("alias").orEmpty()
+            val swipeAlias = swipe.getString("alias").orEmpty()
+
+            transaction.update(user, "alias", alias)
+            if (settings.getBoolean("listed") == true && current.getBoolean("profileComplete") == true &&
+                current.getBoolean("isReviewerAccount") != true && current.getBoolean("isBanned") != true
+            ) {
+                transaction.set(peopleProfile, peopleProfileFields(alias, settings.getString("username").orEmpty()))
+            }
+            if (swipe.exists() && (swipeAlias.isBlank() || swipeAlias == oldName)) {
+                transaction.update(swipeProfile, "alias", alias)
+            }
+            true
+        }.await()
+        if (!saved) return "Finish setting up your profile to edit your display name."
+        _state.update { it.copy(alias = alias) }
+        null
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        "Couldn't save your display name. Please try again."
+    }
+ }
 
  fun cancelBackgroundQueue(context: android.content.Context) {
 
@@ -633,6 +688,8 @@ fun VeilHomeScreen(
 
 
  onOpenVeilFriends   : () -> Unit = {},
+ onOpenHelpSafety    : () -> Unit = {},
+ onOpenPeople        : () -> Unit = {},
 
 
  ) {
@@ -663,9 +720,6 @@ fun VeilHomeScreen(
 
 
 
-
-
- var showLogout by remember { mutableStateOf(false) }
 
 
  var selectedTab by rememberSaveable { mutableIntStateOf(0) }
@@ -746,7 +800,7 @@ fun VeilHomeScreen(
  isUploadingPhoto = false
 
 
- if (ok) { showLogout = false } else { photoUploadError = err }
+ if (!ok) photoUploadError = err
 
 
  }
@@ -816,12 +870,6 @@ fun VeilHomeScreen(
 
 
  }
-
-
-
-
-
- val deleteAccountUrl = "https://docs.google.com/forms/d/e/1FAIpQLScLs32PUEm-BFcwq_M8q-wy5a1M0d1ZIpOZoTW9a7BYNvlg6Q/viewform"
 
 
 
@@ -1044,7 +1092,8 @@ fun VeilHomeScreen(
 
          onOpenCookieStore = onOpenCookieStore,
 
-         onOpenUserProfile = onOpenUserProfile
+         onOpenUserProfile = onOpenUserProfile,
+         onOpenPeople = onOpenPeople
 
      )
 
@@ -1076,54 +1125,28 @@ fun VeilHomeScreen(
  )
 
 
- 3 -> ProfileTab(
-
-
- state = state,
-
-
- vm = vm,
-
-
- isDev = isDev,
-
-
- isUploadingPhoto = isUploadingPhoto,
-
-
- photoUploadError = photoUploadError,
-
-
- deleteAccountUrl = deleteAccountUrl,
-
-
- context = context,
-
-
- scaffoldPadding = scaffoldPadding,
-
-
- onGalleryLaunch = { galleryLauncher.launch("image/*") },
-
-
- onOpenProfileThemes = onOpenProfileThemes,
-
-
- onOpenDevPanel = onOpenDevPanel,
-
-
- onOpenCookieStore = onOpenCookieStore,
-
-
- onOpenInvite = onOpenInvite,
-
-
- onOpenVeilFriends = onOpenVeilFriends,
-
-
- onLogout = onLogout
-
-
+ 3 -> OwnProfileTab(
+     uid = authUid,
+     email = FirebaseAuth.getInstance().currentUser?.email.orEmpty(),
+     state = state,
+     isDev = isDev,
+     uploadingPhoto = isUploadingPhoto,
+     photoUploadError = photoUploadError,
+     bottomAndSystemPadding = scaffoldPadding,
+     onChangePhoto = { galleryLauncher.launch("image/*") },
+     onSaveDisplayName = vm::saveDisplayName,
+     onOpenProfileThemes = onOpenProfileThemes,
+     onOpenPeople = onOpenPeople,
+     onOpenVeilFriends = onOpenVeilFriends,
+     onOpenCookieStore = onOpenCookieStore,
+     onOpenInvite = onOpenInvite,
+     onOpenHelpSafety = onOpenHelpSafety,
+     onOpenDevPanel = onOpenDevPanel,
+     onLogout = onLogout,
+     onOpenHome = {
+         previousTab = selectedTab
+         selectedTab = 0
+     }
  )
 
 
@@ -1131,361 +1154,6 @@ fun VeilHomeScreen(
 
 
  }
-
-
-
-
-
- // dialog 
-
-
- if (showLogout) {
-
-
- androidx.compose.ui.window.Dialog(onDismissRequest = { showLogout = false }) {
-
-
- Box(
-
-
- Modifier
-
-
- .fillMaxWidth()
-
-
- .clip(RoundedCornerShape(24.dp))
-
-
- .background(HCard)
-
-
- .border(1.dp, HCardBorder, RoundedCornerShape(24.dp))
-
-
- ) {
-
-
- Column(horizontalAlignment = Alignment.CenterHorizontally) {
-
-
- Spacer(Modifier.height(32.dp))
-
-
-
-
-
- // Profile picture
-
-
- Box(
-
-
- Modifier
-
-
- .size(80.dp)
-
-
- .clip(CircleShape)
-
-
- .background(HAccentSoft)
-
-
- .border(2.5.dp, HAccent.copy(0.25f), CircleShape)
-
-
- ) {
-
-
- val p = state.photoUrl
-
-
- if (p.isNotBlank()) {
-
-
- VHMemberPhoto(p, ContentScale.Crop, Modifier.fillMaxSize().clip(CircleShape))
-
-
- } else {
-
-
- Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-
-
- Text(state.emoji.ifBlank { "" }, fontSize = 32.sp)
-
-
- }
-
-
- }
-
-
- }
-
-
-
-
-
- Spacer(Modifier.height(16.dp))
-
-
-
-
-
- // Name and email
-
-
- Text(
-
-
- state.alias,
-
-
- fontSize = 18.sp,
-
-
- fontWeight = FontWeight.Bold,
-
-
- color = HPrimary
-
-
- )
-
-
- Spacer(Modifier.height(4.dp))
-
-
- Text(
-
-
- "signed in with google",
-
-
- fontSize = 12.sp,
-
-
- color = HSecondary
-
-
- )
-
-
-
-
-
- Spacer(Modifier.height(24.dp))
-
-
-
-
-
- // Divider
-
-
- HorizontalDivider(color = HCardBorder, thickness = 1.dp)
-
-
-
-
-
- // Menu items
-
-
- if (isDev) {
-
-
- ModernMenuRow(icon = "⚙", label = "Dev Panel", sublabel = null, tint = Color(0xFF6BBFCC)) {
-
-
- showLogout = false; onOpenDevPanel()
-
-
- }
-
-
- HorizontalDivider(color = HCardBorder, thickness = 1.dp)
-
-
- }
-
-
-
-
-
- ModernMenuRow(icon = "👤", label = "View Profile", sublabel = "Manage account & settings", tint = HAccent) {
-
-
- showLogout = false
-
-
- }
-
-
-
-
-
- HorizontalDivider(color = HCardBorder, thickness = 1.dp)
-
-
-
-
-
- ModernMenuRow(icon = "🚪", label = "Sign Out", sublabel = null, tint = Color(0xFFE85D5D)) {
-
-
- showLogout = false; onLogout()
-
-
- }
-
-
-
-
-
- HorizontalDivider(color = HCardBorder, thickness = 1.dp)
-
-
-
-
-
- Spacer(Modifier.height(12.dp))
-
-
-
-
-
- // Footer links
-
-
- Row(
-
-
- Modifier.fillMaxWidth(),
-
-
- horizontalArrangement = Arrangement.Center
-
-
- ) {
-
-
- Text(
-
-
- "privacy policy",
-
-
- fontSize = 11.sp,
-
-
- color = HMuted,
-
-
- style = androidx.compose.ui.text.TextStyle(
-
-
- textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
-
-
- ),
-
-
- modifier = Modifier.clickable {
-
-
- android.content.Intent(
-
-
- android.content.Intent.ACTION_VIEW,
-
-
- android.net.Uri.parse("https://veil-app.in/privacy")
-
-
- ).also { context.startActivity(it) }
-
-
- }
-
-
- )
-
-
- Text(" ", fontSize = 11.sp, color = HMuted)
-
-
- Text(
-
-
- "request account deletion",
-
-
- fontSize = 11.sp,
-
-
- color = HMuted,
-
-
- style = androidx.compose.ui.text.TextStyle(
-
-
- textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
-
-
- ),
-
-
- modifier = Modifier.clickable {
-
-
- android.content.Intent(
-
-
- android.content.Intent.ACTION_VIEW,
-
-
- android.net.Uri.parse(deleteAccountUrl)
-
-
- ).also { context.startActivity(it) }
-
-
- }
-
-
- )
-
-
- }
-
-
-
-
-
- Spacer(Modifier.height(16.dp))
-
-
- }
-
-
- }
-
-
- }
-
-
- }
-
-
- }
-
-
-
-
 
  // \u2500\u2500 Welcome Gift Dialog (30 cookies, shows once per account) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
@@ -1899,887 +1567,6 @@ fun VeilHomeScreen(
 
 
 } // Close Scaffold
-
-
-
-
-
-
-
-
-
-
-
-// 
-
-
-private val PBg         get() = if (_homeDark) Color(0xFF111118) else Color(0xFFFFFFFF)
-private val PCard       get() = if (_homeDark) Color(0xFF1D1D28) else Color(0xFFFFFFFF)
-private val PBorder     get() = if (_homeDark) Color(0xFFFFFFFF).copy(alpha = 0.10f) else Color(0xFF000000).copy(alpha = 0.10f)
-private val PBorderHard get() = if (_homeDark) Color(0xFFFFFFFF).copy(alpha = 0.18f) else Color(0xFF000000).copy(alpha = 0.18f)
-private val PPrimary    get() = if (_homeDark) Color(0xFFDFDFEA) else Color(0xFF0A0A0A)
-private val PFill       get() = if (_homeDark) Color(0xFF2C2C3C) else Color(0xFF0A0A0A)
-private val PSub        get() = if (_homeDark) Color(0xFFAAAAB8) else Color(0xFF555555)
-private val PMuted      get() = if (_homeDark) Color(0xFF787888) else Color(0xFF999999)
-private val PGhost      get() = if (_homeDark) Color(0xFF1E1E2C) else Color(0xFFF2F2F2)
-
-
-
-
-
-// ProfileTab 
-
-
-@Composable
-
-
-private fun ProfileTab(
-
-
- state : VeilHomeUiState,
-
-
- vm : VeilHomeViewModel,
-
-
- isDev : Boolean,
-
-
- isUploadingPhoto : Boolean,
-
-
- photoUploadError : String?,
-
-
- deleteAccountUrl : String,
-
-
- context : android.content.Context,
-
-
- scaffoldPadding : PaddingValues,
-
-
- onGalleryLaunch : () -> Unit,
-
-
- onOpenProfileThemes : () -> Unit,
-
-
- onOpenDevPanel : () -> Unit,
-
-
- onOpenCookieStore : () -> Unit,
-
-
- onOpenInvite : () -> Unit,
-
-
- onOpenVeilFriends : () -> Unit,
-
-
- onLogout : () -> Unit,
-
-
- ) {
-
-
- val auth = FirebaseAuth.getInstance()
-
-
- val db = FirebaseFirestore.getInstance()
-
-
- val uid = auth.currentUser?.uid ?: ""
-
-
- val email = auth.currentUser?.email ?: ""
-
-
- val haptic = LocalHapticFeedback.current
-
-
-
-
-
- // cookie 
-
-
- var cookieBalance by remember { mutableIntStateOf(0) }
-
-
- LaunchedEffect(uid) {
-
-
- if (uid.isBlank()) return@LaunchedEffect
-
-
- try {
-
-
- val doc = db.collection("users").document(uid).get().await()
-
-
- cookieBalance = (doc.getLong("cookieBalance") ?: 0L).toInt()
-
-
- } catch (_: Exception) {}
-
-
- }
-
-
-
-
-
- // 
-
-
- val shimTrans = rememberInfiniteTransition(label = "ps")
-
-
- val shimX by shimTrans.animateFloat(
-
-
- -800f, 800f, label = "psx",
-
-
- animationSpec = infiniteRepeatable(tween(1100, easing = LinearEasing), RepeatMode.Restart)
-
-
- )
-
-
- val shimBrush = Brush.linearGradient(
-
-
- colors = if (_homeDark) listOf(Color(0xFF1A1A26), Color(0xFF272733), Color(0xFF1A1A26)) else listOf(Color(0xFFEEEEEE), Color(0xFFF8F8F8), Color(0xFFEEEEEE)),
-
-
- start = Offset(shimX - 200f, 0f), end = Offset(shimX + 200f, 0f)
-
-
- )
-
-
-
-
-
- // 
-
-
- val ringTrans = rememberInfiniteTransition(label = "pr")
-
-
- val ringScale by ringTrans.animateFloat(
-
-
- 1f, 1.06f, label = "prs",
- animationSpec = infiniteRepeatable(tween(2000, easing = FastOutSlowInEasing), RepeatMode.Reverse)
- )
-
-
- // 
- // NOTE: copy profilepageani.lottie app/src/main/assets/profilepageani.lottie
- val lottieComp by rememberLottieComposition(
- LottieCompositionSpec.Asset("profilepageani.lottie")
- )
- val lottieProg by animateLottieCompositionAsState(
- composition = lottieComp,
- iterations = LottieConstants.IterateForever,
- isPlaying = true
- )
-
-
- // 
- // SKELETON
- // 
- if (state.isLoading) {
- Column(
- Modifier
- .fillMaxSize()
- .background(PBg)
- .padding(scaffoldPadding)
- .statusBarsPadding()
- .verticalScroll(rememberScrollState())
- ) {
- Spacer(Modifier.height(24.dp))
- // Animation placeholder
- Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(180.dp)
- .clip(RoundedCornerShape(24.dp)).background(shimBrush))
- Spacer(Modifier.height(16.dp))
- // Avatar card skeleton
- Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(220.dp)
- .clip(RoundedCornerShape(24.dp)).background(shimBrush))
- Spacer(Modifier.height(16.dp))
- // Stats skeleton
- Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
- repeat(3) { Box(Modifier.weight(1f).height(72.dp).clip(RoundedCornerShape(16.dp)).background(shimBrush)) }
- }
- Spacer(Modifier.height(20.dp))
- repeat(2) {
- Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(140.dp)
- .clip(RoundedCornerShape(20.dp)).background(shimBrush))
- Spacer(Modifier.height(14.dp))
- }
- }
- return
- }
-
-
- // 
- // LOADED CONTENT
- // 
- Column(
- Modifier
- .fillMaxSize()
- .background(PBg)
- .padding(scaffoldPadding)
- .verticalScroll(rememberScrollState())
- .statusBarsPadding()
- ) {
- Spacer(Modifier.height(20.dp))
-
- // 
- Box(
- Modifier
- .fillMaxWidth()
- .padding(horizontal = 20.dp)
- .clip(RoundedCornerShape(24.dp))
- .background(PCard)
- .border(1.dp, PBorderHard, RoundedCornerShape(24.dp))
- .padding(vertical = 28.dp, horizontal = 24.dp),
- contentAlignment = Alignment.Center
- ) {
- Column(horizontalAlignment = Alignment.CenterHorizontally) {
-
- // 
- Box(contentAlignment = Alignment.Center) {
- Box(
- Modifier.size(108.dp).scale(ringScale).clip(CircleShape)
- .border(1.5.dp, PBorder, CircleShape)
- )
- Box(
- Modifier
- .size(96.dp)
- .clip(CircleShape)
- .background(PGhost)
- .border(2.dp, PPrimary, CircleShape)
- .clickable {
- haptic.performHapticFeedback(HapticFeedbackType.LongPress)
- onGalleryLaunch()
- },
- contentAlignment = Alignment.Center
- ) {
- if (state.photoUrl.isNotBlank()) {
- VHMemberPhoto(state.photoUrl, ContentScale.Crop, Modifier.fillMaxSize().clip(CircleShape))
- } else {
- Text(state.emoji.ifBlank { "\uD83C\uDF19" }, fontSize = 38.sp)
- }
- if (isUploadingPhoto) {
- Box(Modifier.fillMaxSize().background(Color.Black.copy(0.5f)), contentAlignment = Alignment.Center) {
- CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(28.dp))
- }
- }
- }
- // Edit badge
- Box(
- Modifier
- .align(Alignment.BottomEnd)
- .offset(x = 3.dp, y = 3.dp)
- .size(28.dp)
- .clip(CircleShape)
- .background(PFill)
- .border(2.dp, PCard, CircleShape),
- contentAlignment = Alignment.Center
- ) {
- Icon(Icons.Rounded.CameraAlt, null, tint = Color.White, modifier = Modifier.size(14.dp))
- }
- }
-
- Spacer(Modifier.height(18.dp))
-
- Text(
- state.alias.ifBlank { "Wanderer" },
- fontSize = 22.sp,
- fontWeight = FontWeight.ExtraBold,
- color = PPrimary,
- letterSpacing = (-0.5).sp
- )
- Spacer(Modifier.height(3.dp))
- Text(
- email.ifBlank { "Signed in with Google" },
- fontSize = 12.sp,
- color = PSub,
- letterSpacing = 0.sp
- )
-
- Spacer(Modifier.height(16.dp))
-
- // 
- Row(
- Modifier
- .clip(RoundedCornerShape(6.dp))
- .background(PFill)
- .padding(horizontal = 14.dp, vertical = 7.dp),
- horizontalArrangement = Arrangement.spacedBy(7.dp),
- verticalAlignment = Alignment.CenterVertically
- ) {
- Box(Modifier.size(6.dp).clip(CircleShape).background(Color.White.copy(0.7f)))
- Text(
- "Introvert Veil Member",
- fontSize = 12.sp,
- fontWeight = FontWeight.SemiBold,
- color = Color.White,
- letterSpacing = 0.3.sp
- )
- }
-
- // Upload error
- if (photoUploadError != null) {
- Spacer(Modifier.height(12.dp))
- Row(
- Modifier
- .clip(RoundedCornerShape(8.dp))
- .border(1.dp, PPrimary.copy(0.15f), RoundedCornerShape(8.dp))
- .background(PGhost)
- .padding(horizontal = 12.dp, vertical = 8.dp),
- horizontalArrangement = Arrangement.spacedBy(8.dp),
- verticalAlignment = Alignment.CenterVertically
- ) {
- Text("", fontSize = 13.sp, color = PPrimary)
- Text(photoUploadError, fontSize = 12.sp, color = PSub)
- }
- }
- }
- }
-
- Spacer(Modifier.height(14.dp))
-
- // Stats 
- Row(
- Modifier.fillMaxWidth().padding(horizontal = 20.dp),
- horizontalArrangement = Arrangement.spacedBy(10.dp)
- ) {
- PStatCard(Modifier.weight(1f), top = " $cookieBalance", bottom = "COOKIES")
- PStatCard(Modifier.weight(1f), top = "\uD83C\uDF19", bottom = "ANONYMOUS")
- PStatCard(Modifier.weight(1f), top = "", bottom = "VERIFIED")
- }
-
- Spacer(Modifier.height(24.dp))
-
- // Features 
- PSectionLabel("Features")
-
- PCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-  PMenuRow(icon = "🍪", label = "Cookie Store",
-  sub = "Buy cookies · send compliments",
-  badge = if (cookieBalance > 0) "$cookieBalance" else null) {
-  haptic.performHapticFeedback(HapticFeedbackType.LongPress); onOpenCookieStore()
-  }
-  PDivider()
-  PMenuRow(
-      icon  = "🌙",
-      label = "VEIL Friends",
-      sub   = "AI companions that remember you",
-      badge = "NEW"
-  ) {
-      haptic.performHapticFeedback(HapticFeedbackType.LongPress); onOpenVeilFriends()
-  }
-  PDivider()
-  PMenuRow(icon = "👥", label = "Invite Friends",
-  sub = "Share Veil, grow the community",
-  badge = "FREE") {
-  haptic.performHapticFeedback(HapticFeedbackType.LongPress); onOpenInvite()
-  }
-
-  PDivider()
-
-  // ── Rate on Play Store ───────────────────────────────────────────────────
-  PMenuRow(
-      icon  = "⭐",
-      label = "Rate Veil on Play Store",
-      sub   = "Your review means the world to us",
-      badge = "QUICK"
-  ) {
-      haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-      android.content.Intent(
-          android.content.Intent.ACTION_VIEW,
-          android.net.Uri.parse("https://play.google.com/store/apps/details?id=com.ns.findyourintroverfriend")
-      ).also { context.startActivity(it) }
-  }
-
-  PDivider()
-
-  // ── Tell the Developers ──────────────────────────────────────────────────
-  PMenuRow(
-      icon  = "💌",
-      label = "Tell the Developers",
-      sub   = "Feedback, bugs, or just say hi",
-      badge = null
-  ) {
-      haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-      val intent = android.content.Intent(android.content.Intent.ACTION_SENDTO).apply {
-          data = android.net.Uri.parse("mailto:")
-          putExtra(android.content.Intent.EXTRA_EMAIL, arrayOf("solynlabs@gmail.com"))
-          putExtra(android.content.Intent.EXTRA_SUBJECT, "[Veil Feedback] from ${state.alias}")
-          putExtra(android.content.Intent.EXTRA_TEXT, "Hi Veil team,\n\n")
-      }
-      runCatching { context.startActivity(intent) }
-  }
-
-  if (isDev) {
-  PDivider()
-  PMenuRow(icon = "⚙", label = "Dev Panel",
-  sub = "Internal tools & debug", badge = "DEV") {
-  haptic.performHapticFeedback(HapticFeedbackType.LongPress); onOpenDevPanel()
-  }
-  }
- }
-
- Spacer(Modifier.height(14.dp))
-
- // Account 
- // Appearance
- PSectionLabel("Appearance")
-
- PCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-  val currentMode = VeilThemeManager.themeMode
-  Row(
-   modifier = Modifier
-    .fillMaxWidth()
-    .padding(horizontal = 14.dp, vertical = 14.dp),
-   horizontalArrangement = Arrangement.spacedBy(8.dp)
-  ) {
-   listOf(
-    Triple(VeilThemeManager.ThemeMode.SYSTEM, "System", "⊙"),
-    Triple(VeilThemeManager.ThemeMode.LIGHT,  "Light",  "☀"),
-    Triple(VeilThemeManager.ThemeMode.DARK,   "Dark",   "🌙"),
-   ).forEachIndexed { idx, (mode, label, icon) ->
-    val isSelected = currentMode == mode
-    val segBg by animateColorAsState(
-     if (isSelected) PFill else PGhost,
-     tween(220), label = "seg$idx"
-    )
-    val segTxt by animateColorAsState(
-     if (isSelected) Color.White else PSub,
-     tween(220), label = "tc$idx"
-    )
-    Box(
-     modifier = Modifier
-      .weight(1f)
-      .clip(RoundedCornerShape(10.dp))
-      .background(segBg)
-      .border(0.6.dp, if (isSelected) Color.Transparent else PBorder, RoundedCornerShape(10.dp))
-      .clickable {
-       haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-       VeilThemeManager.setTheme(context, mode)
-      }
-      .padding(vertical = 10.dp),
-     contentAlignment = Alignment.Center
-    ) {
-     Column(
-      horizontalAlignment = Alignment.CenterHorizontally,
-      verticalArrangement = Arrangement.spacedBy(2.dp)
-     ) {
-      Text(icon, fontSize = 15.sp, color = segTxt)
-      Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = segTxt, letterSpacing = 0.3.sp)
-     }
-    }
-   }
-  }
- }
-
- Spacer(Modifier.height(14.dp))
-
- PSectionLabel("Account")
-
- PCard(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-     PMenuRow(icon = "\uD83D\uDEAA", label = "Sign Out",
-         sub = "See you soon", badge = null, isDanger = true) {
-         haptic.performHapticFeedback(HapticFeedbackType.LongPress); onLogout()
-     }
-     PDivider()
-     PMenuRow(icon = "\uD83D\uDDD1", label = "Delete Account",
-         sub = "Permanently remove your data", badge = null, isDanger = true) {
-         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-         android.content.Intent(android.content.Intent.ACTION_VIEW,
-             android.net.Uri.parse(deleteAccountUrl)).also { context.startActivity(it) }
-     }
- }
-
- Spacer(Modifier.height(28.dp))
-
- // ── Lottie banner — now at bottom ──────────────────────────────────────
- Box(
-     Modifier
-         .fillMaxWidth()
-         .padding(horizontal = 20.dp)
-         .clip(RoundedCornerShape(24.dp))
-         .background(PGhost)
-         .border(1.dp, PBorder, RoundedCornerShape(24.dp))
-         .height(160.dp),
-     contentAlignment = Alignment.Center
- ) {
-     LottieAnimation(
-         composition = lottieComp,
-         progress    = { lottieProg },
-         modifier    = Modifier.fillMaxSize()
-     )
-     Box(
-         Modifier
-             .align(Alignment.BottomStart)
-             .padding(14.dp)
-             .clip(RoundedCornerShape(8.dp))
-             .background(if (_homeDark) Color(0xFF2A2A3C).copy(0.92f) else Color.White.copy(0.82f))
-             .padding(horizontal = 10.dp, vertical = 4.dp)
-     ) {
-         Text("Your Space", fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-             color = if (_homeDark) Color(0xFFDFDFEA) else Color(0xFF1C1916), letterSpacing = 0.5.sp)
-     }
- }
-
- Spacer(Modifier.height(20.dp))
-
- Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-     Row(horizontalArrangement = Arrangement.Center) {
-         Text("Privacy Policy", fontSize = 11.sp, color = PSub,
-             style = androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline),
-             modifier = Modifier.clickable {
-                 android.content.Intent(android.content.Intent.ACTION_VIEW,
-                     android.net.Uri.parse("https://veil-app.in/privacy")).also { context.startActivity(it) }
-             })
-         Text("   ", fontSize = 11.sp, color = PMuted)
-         Text("Terms of Service", fontSize = 11.sp, color = PSub,
-             style = androidx.compose.ui.text.TextStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline),
-             modifier = Modifier.clickable {
-                 android.content.Intent(android.content.Intent.ACTION_VIEW,
-                     android.net.Uri.parse("https://veil-app.in/terms")).also { context.startActivity(it) }
-             })
-     }
-     Spacer(Modifier.height(6.dp))
-     Text("Veil — made for introverts \uD83E\uDDD8", fontSize = 11.sp, color = PMuted, letterSpacing = 0.4.sp)
- }
-
- Spacer(Modifier.height(36.dp))
- }  // Column (loaded content)
-}  // ProfileTab
-
-
-
-
-
-
-
-@Composable
-
-
-private fun PStatCard(modifier: Modifier, top: String, bottom: String) {
-
-
- var pressed by remember { mutableStateOf(false) }
-
-
- val sc by animateFloatAsState(if (pressed) 0.94f else 1f,
-
-
- spring(stiffness = Spring.StiffnessMediumLow), label = "psc")
-
-
- LaunchedEffect(pressed) { if (pressed) { kotlinx.coroutines.delay(80); pressed = false } }
-
-
- Box(
-
-
- modifier
-
-
- .scale(sc)
-
-
- .clip(RoundedCornerShape(16.dp))
-
-
- .background(PGhost)
-
-
- .border(1.dp, PBorderHard, RoundedCornerShape(16.dp))
-
-
- .clickable { pressed = true }
-
-
- .padding(vertical = 16.dp),
-
-
- contentAlignment = Alignment.Center
-
-
- ) {
-
-
- Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-
-
- Text(top, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = PPrimary)
-
-
- Text(bottom, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = PMuted, letterSpacing = 1.sp)
-
-
- }
-
-
- }
-
-
-}
-
-
-
-
-
-@Composable
-
-
-private fun PSectionLabel(label: String) {
-
-
- Text(
-
-
- label.uppercase(),
-
-
- fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = PMuted,
-
-
- letterSpacing = 2.sp,
-
-
- modifier = Modifier.padding(start = 28.dp, bottom = 8.dp)
-
-
- )
-
-
-}
-
-
-
-
-
-@Composable
-
-
-private fun PCard(modifier: Modifier, content: @Composable () -> Unit) {
-
-
- Column(
-
-
- modifier
-
-
- .clip(RoundedCornerShape(20.dp))
-
-
- .background(PCard)
-
-
- .border(1.dp, PBorderHard, RoundedCornerShape(20.dp))
-
-
- ) { content() }
-
-
-}
-
-
-
-
-
-@Composable
-
-
-private fun PDivider() {
-
-
- HorizontalDivider(modifier = Modifier.padding(start = 64.dp), color = PBorder, thickness = 0.5.dp)
-
-
-}
-
-
-
-
-
-@Composable
-
-
-private fun PMenuRow(
-
-
- icon : String,
-
-
- label : String,
-
-
- sub : String?,
-
-
- badge : String?,
-
-
- isDanger : Boolean = false,
-
-
- onClick : () -> Unit
-
-
-) {
-
-
- var pressed by remember { mutableStateOf(false) }
-
-
- val bgAlpha by animateFloatAsState(if (pressed) 0.05f else 0f, tween(80), label = "pm")
-
-
- LaunchedEffect(pressed) { if (pressed) { kotlinx.coroutines.delay(110); pressed = false } }
-
-
-
-
-
- Row(
-
-
- Modifier
-
-
- .fillMaxWidth()
-
-
- .background(PPrimary.copy(alpha = bgAlpha))
-
-
- .clickable { pressed = true; onClick() }
-
-
- .padding(horizontal = 18.dp, vertical = 15.dp),
-
-
- verticalAlignment = Alignment.CenterVertically,
-
-
- horizontalArrangement = Arrangement.spacedBy(14.dp)
-
-
- ) {
-
-
- // Icon chip monochrome, filled black if danger else outlined
-
-
- Box(
-
-
- Modifier
-
-
- .size(40.dp)
-
-
- .clip(RoundedCornerShape(10.dp))
-
-
- .background(if (isDanger) PFill else PGhost)
-
-
- .border(1.dp, if (isDanger) Color.Transparent else PBorderHard, RoundedCornerShape(10.dp)),
-
-
- contentAlignment = Alignment.Center
-
-
- ) {
-
-
- Text(icon, fontSize = 18.sp)
-
-
- }
-
-
-
-
-
- // Label + sub
-
-
- Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-
-
- Text(label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-
-
- color = if (isDanger) PPrimary else PPrimary)
-
-
- if (sub != null) Text(sub, fontSize = 12.sp, color = PSub, lineHeight = 16.sp)
-
-
- }
-
-
-
-
-
- // Right end: badge or chevron
-
-
- if (badge != null) {
-
-
- Box(
-
-
- Modifier
-
-
- .clip(RoundedCornerShape(6.dp))
-
-
- .background(PFill)
-
-
- .padding(horizontal = 8.dp, vertical = 3.dp)
-
-
- ) {
-
-
- Text(badge, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White, letterSpacing = 0.5.sp)
-
-
- }
-
-
- } else {
-
-
- Text("", fontSize = 22.sp, color = PMuted, fontWeight = FontWeight.Light)
-
-
- }
-
-
- }
-
-
 }
 
 
@@ -2789,247 +1576,10 @@ private fun PMenuRow(
 
 
 
-// ProfileTab 
 
 
 
-
-
-@Composable
-
-
-private fun VHMemberPhoto(
-
-
- photoUrl : String,
-
-
- contentScale : ContentScale = ContentScale.Crop,
-
-
- modifier : Modifier = Modifier
-
-
-) {
-
-
- coil.compose.AsyncImage(
-
-
- model = photoUrl,
-
-
- contentDescription = null,
-
-
- contentScale = contentScale,
-
-
- modifier = modifier
-
-
- )
-
-
-}
-
-
-
-
-
-@Composable
-
-
-private fun AvatarSquircle(state: VeilHomeUiState, onClick: () -> Unit) {
-
-
- Box(
-
-
- Modifier
-
-
- .size(52.dp)
-
-
- .clip(RoundedCornerShape(16.dp))
-
-
- .background(HAccentSoft)
-
-
- .border(1.5.dp, HAccent.copy(0.25f), RoundedCornerShape(16.dp))
-
-
- .clickable { onClick() },
-
-
- contentAlignment = Alignment.Center
-
-
- ) {
-
-
- if (state.photoUrl.isNotBlank() && !state.isLoading)
-
-
- VHMemberPhoto(state.photoUrl, ContentScale.Crop, Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)))
-
-
- else
-
-
- Text(state.emoji.ifBlank { "o" }, fontSize = 22.sp)
-
-
- }
-
-
-}
-
-
-
-
-
-@Composable
-
-
-private fun ModernMenuRow(
-
-
- icon : String,
-
-
- label : String,
-
-
- sublabel : String?,
-
-
- tint : Color,
-
-
- onClick : () -> Unit
-
-
-) {
-
-
- Row(
-
-
- Modifier
-
-
- .fillMaxWidth()
-
-
- .clickable { onClick() }
-
-
- .padding(horizontal = 20.dp, vertical = 16.dp),
-
-
- verticalAlignment = Alignment.CenterVertically,
-
-
- horizontalArrangement = Arrangement.spacedBy(14.dp)
-
-
- ) {
-
-
- Text(icon, fontSize = 20.sp, color = tint)
-
-
- Column(Modifier.weight(1f)) {
-
-
- Text(label, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = HPrimary)
-
-
- if (sublabel != null)
-
-
- Text(sublabel, fontSize = 12.sp, color = HSecondary, lineHeight = 16.sp)
-
-
- }
-
-
- Text("\u203A", fontSize = 20.sp, color = HMuted)
-
-
- }
-
-
-}
-
-
-
-
-
-@Composable
-
-
-private fun MenuRow(
-
-
- icon : String,
-
-
- label : String,
-
-
- sublabel : String?,
-
-
- tint : Color,
-
-
- onClick : () -> Unit
-
-
-) {
-
-
- Row(
-
-
- Modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 20.dp, vertical = 14.dp),
-
-
- verticalAlignment = Alignment.CenterVertically,
-
-
- horizontalArrangement = Arrangement.spacedBy(14.dp)
-
-
- ) {
-
-
- Text(icon, fontSize = 18.sp, color = tint)
-
-
- Column(Modifier.weight(1f)) {
-
-
- Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = HPrimary)
-
-
- if (sublabel != null) Text(sublabel, fontSize = 11.sp, color = HSecondary)
-
-
- }
-
-
- Text("\u203A", fontSize = 18.sp, color = HMuted)
-
-
- }
-
-
-}
+//
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Voice Rooms Banner — floating pill on Tab 0 (Feed)

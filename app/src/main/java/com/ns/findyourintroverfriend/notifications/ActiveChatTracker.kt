@@ -21,6 +21,10 @@ object ActiveChatTracker {
     @Volatile
     var activeMatchId: String? = null
 
+    @Volatile
+    var activeGroupRoomId: String? = null
+
+
     /**
      * True whenever MainActivity is in the foreground (onResume called, onStop not yet).
      * Used to silence notifications when the user is actively using the app.

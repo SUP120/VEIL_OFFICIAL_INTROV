@@ -1,11 +1,14 @@
 package com.ns.findyourintroverfriend.swipe
 
+import android.app.Application
+import android.content.SharedPreferences
 import android.util.Log
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
+import com.ns.findyourintroverfriend.report.SafetyService
 import com.ns.findyourintroverfriend.util.PresenceManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -13,7 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-class MatchesViewModel : ViewModel() {
+class MatchesViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db   = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
@@ -55,12 +58,21 @@ class MatchesViewModel : ViewModel() {
     val presenceMap: StateFlow<Map<String, Pair<Boolean, Long>>> = _presenceMap.asStateFlow()
 
     private val mergedMatches = mutableMapOf<String, SwipeMatch>()
+    private var blockedUsers = emptySet<String>()
+    private var blocksListener: ListenerRegistration? = null
 
     private var indexListener        : ListenerRegistration? = null
     private var pendingListener      : ListenerRegistration? = null
     private var complimentsListener  : ListenerRegistration? = null
     private var sentListener         : ListenerRegistration? = null
     private val msgListeners         = mutableMapOf<String, ListenerRegistration>()
+    private val readState = DmReadState(application)
+    private val latestIncoming = mutableMapOf<String, DmMessagePosition>()
+    private val readListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key != null && uid.isNotBlank() && key.startsWith("$uid/")) {
+            updateUnread(key.substringAfter('/'))
+        }
+    }
 
     /**
      * Local override set — once a user taps 'Accept', we mark that compliment
@@ -71,6 +83,13 @@ class MatchesViewModel : ViewModel() {
     private val locallyAccepted = mutableSetOf<String>()  // stores fromUid values
 
     init {
+        readState.preferences.registerOnSharedPreferenceChangeListener(readListener)
+        if (uid.isNotBlank()) blocksListener = SafetyService.blocks(uid).addSnapshotListener { snapshot, _ ->
+            if (snapshot != null) {
+                blockedUsers = snapshot.documents.mapTo(mutableSetOf()) { it.id }
+                publishMatches()
+            }
+        }
         loadMatches()
         loadPendingLikes()
         loadCompliments()
@@ -79,7 +98,9 @@ class MatchesViewModel : ViewModel() {
 
     override fun onCleared() {
         super.onCleared()
+        readState.preferences.unregisterOnSharedPreferenceChangeListener(readListener)
         indexListener?.remove()
+        blocksListener?.remove()
         pendingListener?.remove()
         complimentsListener?.remove()
         sentListener?.remove()
@@ -112,17 +133,17 @@ class MatchesViewModel : ViewModel() {
 
     // ── Block a user from DM inbox ────────────────────────────────────────────
     fun blockUser(targetUid: String, matchId: String) {
-        // Optimistic — remove any chat with this user
-        mergedMatches.remove(matchId)
-        publishMatches()
         viewModelScope.launch {
             try {
-                db.collection("users").document(uid)
-                    .update("blockedUsers", com.google.firebase.firestore.FieldValue.arrayUnion(targetUid))
-                    .await()
-                // Also delete the match
-                db.collection("matches").document(matchId).delete().await()
-                Log.d("MatchesVM", "blocked $targetUid, removed match $matchId")
+                SafetyService.block(uid, targetUid)
+                blockedUsers = blockedUsers + targetUid
+                latestIncoming.remove(matchId)
+                _lastMessages.value = _lastMessages.value - matchId
+                _unreadMatchIds.value = _unreadMatchIds.value - matchId
+                publishMatches()
+                Log.d("MatchesVM", "Blocked user from direct contact")
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (e: Exception) {
                 Log.e("MatchesVM", "blockUser failed: ${e.message}")
             }
@@ -150,7 +171,9 @@ class MatchesViewModel : ViewModel() {
     }
 
     private fun publishMatches() {
-        val all = mergedMatches.values.sortedByDescending { it.matchedAt }
+        val all = mergedMatches.values.filter { match ->
+            (if (match.userA == uid) match.userB else match.userA) !in blockedUsers
+        }.sortedByDescending { it.matchedAt }
         _matches.value       = all.filter { it.source != "friend" }
         _friendMatches.value = all.filter { it.source == "friend" }
         // Refresh presence for all match partners
@@ -240,33 +263,47 @@ class MatchesViewModel : ViewModel() {
                 .orderBy("sentAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
                 .limit(1)
                 .addSnapshotListener { snap, _ ->
-                    val doc = snap?.documents?.firstOrNull() ?: return@addSnapshotListener
+                    val doc = snap?.documents?.firstOrNull()
+                    if (doc == null) {
+                        _lastMessages.value = _lastMessages.value - matchId
+                        latestIncoming.remove(matchId)
+                        updateUnread(matchId)
+                        return@addSnapshotListener
+                    }
                     val text   = doc.getString("text") ?: ""
                     val sentAt = doc.getLong("sentAt") ?: 0L
                     val sender = doc.getString("senderUid") ?: ""
+                    val imageUrl = doc.getString("imageUrl").orEmpty()
                     val preview = when {
+                        imageUrl.isNotBlank() -> "Photo"
                         text.startsWith("voice_note::") -> "🎙 Voice note"
                         text.startsWith("drawing::")   -> "🎨 Drawing"
                         text.startsWith("gift_cookies_") -> "🍪 Cookie gift"
-                        text == "flower_burst"          -> "🌸 Flower Burst"
+                        text.startsWith("flower_burst") -> "🌸 Flowers"
                         text.startsWith("sticker_pack") -> "😄 Sticker"
+                        text.startsWith("game_invite_draw_guess::") -> "Game invitation"
+                        text.startsWith("whisper_invite::") -> "Whisper invitation"
                         text.startsWith("@")            -> "↩ ${text.lines().getOrElse(1){text}.take(40)}"
                         else -> text.take(50)
                     }
                     _lastMessages.value = _lastMessages.value + (matchId to Pair(preview, sentAt))
-                    // Unread = last msg sent by partner, not me
-                    val isUnread = sender.isNotBlank() && sender != uid
-                    _unreadMatchIds.value = if (isUnread)
-                        _unreadMatchIds.value + matchId
-                    else
-                        _unreadMatchIds.value - matchId
+                    if (sender.isNotBlank() && sender != uid) {
+                        latestIncoming[matchId] = DmMessagePosition(sentAt, doc.id)
+                    } else latestIncoming.remove(matchId)
+                    updateUnread(matchId)
                 }
             msgListeners[matchId] = reg
         }
     }
 
-    fun markMatchRead(matchId: String) {
-        _unreadMatchIds.value = _unreadMatchIds.value - matchId
+    private fun updateUnread(matchId: String) {
+        val latest = latestIncoming[matchId]
+        val read = readState.position(readState.key(uid, matchId))
+        _unreadMatchIds.value = if (latest != null && (read == null || latest > read)) {
+            _unreadMatchIds.value + matchId
+        } else {
+            _unreadMatchIds.value - matchId
+        }
     }
 
     // ── Pending Likes ──────────────────────────────────────────────────────────

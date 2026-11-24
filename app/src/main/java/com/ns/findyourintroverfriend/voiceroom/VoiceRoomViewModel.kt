@@ -83,7 +83,7 @@ class VoiceRoomViewModel : ViewModel() {
     private var speakerJob    : Job?   = null
     private var roomObserverJob: Job?  = null
     private var currentRoomId : String = ""
-    private var isMuted       : Boolean = false
+    private var isMuted       : Boolean = true
 
     init { observeLobby() }
 
@@ -290,7 +290,7 @@ class VoiceRoomViewModel : ViewModel() {
         viewModelScope.launch {
             _active.value = _active.value.copy(phase = RoomPhase.CONNECTING)
             currentRoomId = roomId
-            isMuted = false
+            isMuted = true
 
             try {
                 Log.d(TAG, "[1/4] Fetching token for room=$roomId")
@@ -311,16 +311,6 @@ class VoiceRoomViewModel : ViewModel() {
                 Log.d(TAG, "[3/4] Connecting to $livekitUrl…")
                 withTimeout(30_000L) { room.connect(url = livekitUrl, token = token) }
                 Log.d(TAG, "[3/4] Connected ✓")
-
-                Log.d(TAG, "[4/4] Enabling mic…")
-                try {
-                    withTimeout(10_000L) { room.localParticipant.setMicrophoneEnabled(true) }
-                    isMuted = false
-                    Log.d(TAG, "[4/4] Mic enabled ✓")
-                } catch (micErr: Exception) {
-                    Log.w(TAG, "[4/4] Mic enable failed (non-fatal): ${micErr.message}")
-                    isMuted = true
-                }
 
                 // Start room observer (Firestore) + LiveKit events + timer
                 observeRoom(roomId)
@@ -509,6 +499,8 @@ class VoiceRoomViewModel : ViewModel() {
     fun toggleMic() {
         viewModelScope.launch {
             val room = lkRoom ?: run { Log.w(TAG, "toggleMic: room null"); return@launch }
+            val uid = auth.currentUser?.uid ?: return@launch
+            if (isMuted && uid in (_active.value.room?.mutedByHost ?: emptyList())) return@launch
             val newMuted = !isMuted
             try {
                 room.localParticipant.setMicrophoneEnabled(!newMuted)

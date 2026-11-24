@@ -1,424 +1,379 @@
 package com.ns.findyourintroverfriend.aifriend
 
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.*
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Send
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ns.findyourintroverfriend.ui.theme.currentProfilePalette
 import kotlinx.coroutines.launch
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  VEIL Friends — AI Chat Screen
-//  Painterly ambient background + minimal dark chat UI.
-// ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
 fun AiFriendChatScreen(
-    friendId       : String,
-    conversationId : String = "new",
-    onBack         : () -> Unit,
-    vm             : AiFriendViewModel = viewModel(),
+    friendId: String,
+    conversationId: String,
+    onBack: () -> Unit,
+    onOpenCookieStore: () -> Unit
 ) {
-    val friend = remember(friendId) { VeilFriends.find(friendId) } ?: run { onBack(); return }
-
-    val messages by vm.messages.collectAsStateWithLifecycle()
-    val chatState by vm.chatState.collectAsStateWithLifecycle()
-    val memories  by vm.memories.collectAsStateWithLifecycle()
-
-    var inputText       by remember { mutableStateOf("") }
-    var showMemories    by remember { mutableStateOf(false) }
-    val listState       = rememberLazyListState()
-    val scope           = rememberCoroutineScope()
-    val isSending       = chatState is ChatState.Sending
-    val errorMsg        = (chatState as? ChatState.Error)?.message
-
-    // Init on first composition
-    LaunchedEffect(friendId, conversationId) {
-        vm.initFriend(friendId, conversationId)
-    }
-
-    // Auto-scroll to bottom on new messages
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+    val friend = VeilFriends.find(friendId)
+    val colors = currentProfilePalette
+    if (friend == null) {
+        Scaffold(
+            containerColor = colors.background,
+            topBar = { AiTopBar(onBack = onBack) { Text("VEIL Friends AI", color = colors.text) } }
+        ) { padding ->
+            Text("This AI friend is unavailable.", Modifier.padding(padding).padding(20.dp), color = colors.text)
         }
+        return
     }
 
-    // ── Memory sheet ──────────────────────────────────────────────────────
-    if (showMemories) {
-        MemorySheet(
-            friend    = friend,
-            memories  = memories,
-            onDelete  = { id -> vm.deleteMemory(friendId, id) },
-            onForget  = { vm.forgetEverything(friendId) },
-            onDismiss = { showMemories = false }
-        )
-    }
+    val model: AiFriendViewModel = viewModel()
+    val chat by model.chat.collectAsStateWithLifecycle()
+    val draft by model.draft.collectAsStateWithLifecycle()
+    val memories by model.memories.collectAsStateWithLifecycle()
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    var menuOpen by remember { mutableStateOf(false) }
+    var memoriesOpen by rememberSaveable { mutableStateOf(false) }
+    var reportMessageId by rememberSaveable { mutableStateOf<String?>(null) }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    LaunchedEffect(friend.id, conversationId) { model.open(friend.id, conversationId) }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { model.refreshUsage() }
+    LaunchedEffect(memoriesOpen) { if (memoriesOpen) model.loadMemories() }
+    LaunchedEffect(chat.pending?.id) { if (chat.pending != null) listState.scrollToItem(0) }
 
-        // ── Painterly background ──────────────────────────────────────────
-        // This is where you drop in your poetic/painting images.
-        // Each friend has its own background asset (e.g. luna_bg, blaze_bg).
-        // Until you add the images, it gracefully falls back to a solid color.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-        ) {
-            // Gradient overlay for the mood — each friend has its own accent
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.radialGradient(
-                            colors = listOf(
-                                friendAccentColor(friendId).copy(alpha = 0.12f),
-                                Color.Transparent
-                            ),
-                            radius = 800f
+    Scaffold(
+        containerColor = colors.background,
+        topBar = {
+            AiTopBar(onBack, actions = {
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Chat options", tint = colors.text)
+                    }
+                    DropdownMenu(
+                        expanded = menuOpen,
+                        onDismissRequest = { menuOpen = false },
+                        containerColor = colors.card
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Saved memories", color = colors.text) },
+                            onClick = {
+                                menuOpen = false
+                                memoriesOpen = true
+                            }
                         )
-                    )
-            )
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .systemBarsPadding()
-        ) {
-
-            // ── Chat header ───────────────────────────────────────────────
-            ChatHeader(
-                friend          = friend,
-                onBack          = onBack,
-                onMemoriesClick = {
-                    vm.loadMemories(friendId)
-                    showMemories = true
-                }
-            )
-
-            // ── Messages ──────────────────────────────────────────────────
-            LazyColumn(
-                state           = listState,
-                contentPadding  = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier        = Modifier.weight(1f)
-            ) {
-                // Welcome message if no messages yet
-                if (messages.isEmpty() && !isSending) {
-                    item {
-                        WelcomeBubble(friend = friend)
+                        DropdownMenuItem(
+                            text = { Text("Cookie Store", color = colors.text) },
+                            onClick = {
+                                menuOpen = false
+                                onOpenCookieStore()
+                            }
+                        )
                     }
                 }
-
-                items(messages, key = { it.id }) { msg ->
-                    ChatBubble(
-                        message = msg,
-                        friend  = friend,
-                    )
-                }
-
-                // Typing indicator
-                if (isSending) {
-                    item {
-                        TypingIndicator(friend = friend)
+            }) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    AiPortrait(friend, 42.dp)
+                    Column {
+                        Text(friend.name, style = MaterialTheme.typography.titleMedium, color = colors.text)
+                        Text("AI friend · ${friend.style}", style = MaterialTheme.typography.bodySmall, color = colors.secondaryText)
                     }
                 }
             }
-
-            // ── Error snackbar ────────────────────────────────────────────
-            AnimatedVisibility(visible = errorMsg != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xFF2A0000))
-                        .padding(horizontal = 16.dp, vertical = 10.dp)
-                ) {
-                    Row(
-                        verticalAlignment      = Alignment.CenterVertically,
-                        horizontalArrangement  = Arrangement.SpaceBetween,
-                        modifier               = Modifier.fillMaxWidth()
+        }
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()) {
+            HorizontalDivider(color = colors.border)
+            AiUsageBar(chat, onRetry = model::retryConnection)
+            val pending = chat.pending
+            val messages = if (pending != null && chat.messages.none { it.id == pending.id }) {
+                chat.messages + pending
+            } else {
+                chat.messages
+            }
+            val serviceUnavailable = chat.serviceIssue?.blocksSending == true
+            val historyError = chat.historyError.takeUnless { serviceUnavailable && messages.isEmpty() }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when {
+                    chat.findingConversation -> CircularProgressIndicator(
+                        Modifier.align(Alignment.Center).size(26.dp),
+                        color = colors.accent,
+                        strokeWidth = 2.dp
+                    )
+                    chat.conversationError != null && !serviceUnavailable -> Box(Modifier.align(Alignment.Center)) {
+                        AiNotice(chat.conversationError.orEmpty(), "Retry", model::retryConnection)
+                    }
+                    messages.isEmpty() && historyError == null -> LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(horizontal = 22.dp, vertical = 28.dp),
+                        verticalArrangement = Arrangement.Center
                     ) {
-                        Text(errorMsg ?: "", fontSize = 13.sp, color = Color(0xFFFF6B6B), modifier = Modifier.weight(1f))
-                        TextButton(onClick = { vm.clearError() }) {
-                            Text("OK", fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
+                        item { AiStarters(friend, onSelect = model::editDraft) }
+                    }
+                    else -> {
+                        LazyColumn(
+                            state = listState,
+                            reverseLayout = true,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 18.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            if (chat.sending) {
+                                item(key = "replying") {
+                                    Text(
+                                        "${friend.name} is replying…",
+                                        modifier = Modifier.padding(start = 10.dp)
+                                            .semantics { liveRegion = LiveRegionMode.Polite },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = colors.secondaryText
+                                    )
+                                }
+                            }
+                            items(messages.asReversed(), key = { it.id }) { message ->
+                                AiBubble(message, isPending = pending?.id == message.id) {
+                                    reportMessageId = message.id
+                                }
+                            }
+                            historyError?.let { error ->
+                                item(key = "history-error") { AiNotice(error, "Retry", model::retryHistory) }
+                            }
+                            if (chat.hasOlder) {
+                                item(key = "load-earlier") {
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                                        TextButton(onClick = model::loadEarlier, enabled = !chat.loadingOlder) {
+                                            Text(if (chat.loadingOlder) "Loading…" else "Load earlier messages", color = colors.accent)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (messages.isNotEmpty() && listState.firstVisibleItemIndex > 2) {
+                            Surface(
+                                onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                                modifier = Modifier.align(Alignment.BottomEnd).padding(12.dp),
+                                shape = CircleShape,
+                                color = colors.card,
+                                border = BorderStroke(1.dp, colors.border),
+                                shadowElevation = 2.dp
+                            ) {
+                                Text("Latest", Modifier.padding(horizontal = 16.dp, vertical = 9.dp), color = colors.accent)
+                            }
                         }
                     }
                 }
             }
-
-            // ── Input bar ─────────────────────────────────────────────────
-            InputBar(
-                text      = inputText,
-                onChange  = { inputText = it },
-                onSend    = {
-                    val text = inputText.trim()
-                    if (text.isNotBlank() && !isSending) {
-                        inputText = ""
-                        vm.sendMessage(friendId, text)
-                    }
-                },
-                isSending = isSending,
+            HorizontalDivider(color = colors.border)
+            AiComposer(
+                draft = draft,
+                canSend = chat.canSend,
+                error = chat.error,
+                onEdit = model::editDraft,
+                onSend = model::send
             )
         }
     }
+
+    chat.payment?.let { payment ->
+        val price = chat.usage?.cookieCost ?: 1
+        val balance = chat.usage?.cookieBalance ?: 0
+        val needsCookies = payment == AiPayment.Insufficient
+        val cookieLabel = if (price == 1) "1 cookie" else "$price cookies"
+        AlertDialog(
+            onDismissRequest = model::dismissPayment,
+            containerColor = colors.card,
+            title = { Text(if (needsCookies) "Get cookies to continue" else "Send for $cookieLabel?", color = colors.text) },
+            text = {
+                Text(
+                    "You've used your free replies. This reply costs $cookieLabel. Your balance is $balance.",
+                    color = colors.secondaryText
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (needsCookies) {
+                            model.dismissPayment()
+                            onOpenCookieStore()
+                        } else {
+                            model.confirmPayment()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = colors.onAccent)
+                ) {
+                    Text(if (needsCookies) "Cookie Store" else "Send for $cookieLabel")
+                }
+            },
+            dismissButton = { TextButton(onClick = model::dismissPayment) { Text("Cancel", color = colors.accent) } }
+        )
+    }
+
+    if (memoriesOpen) {
+        AiMemoriesDialog(
+            memories = memories,
+            onDismiss = { memoriesOpen = false },
+            onRetry = model::loadMemories,
+            onForget = model::forgetMemories
+        )
+    }
+    reportMessageId?.let { messageId ->
+        AiReportDialog(
+            onDismiss = { reportMessageId = null },
+            onSubmit = { reason -> model.reportReply(messageId, reason) }
+        )
+    }
 }
 
 @Composable
-private fun ChatHeader(
-    friend          : AiFriend,
-    onBack          : () -> Unit,
-    onMemoriesClick : () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
-            Icon(Icons.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(22.dp))
-        }
-        Spacer(Modifier.width(8.dp))
-        // Emoji avatar
-        Box(
-            modifier = Modifier
-                .size(38.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.08f)),
-            contentAlignment = Alignment.Center
-        ) { Text(friend.emoji, fontSize = 18.sp) }
-        Spacer(Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(friend.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF4CAF50))
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(friend.statusLine, fontSize = 11.sp, color = Color.White.copy(alpha = 0.45f))
-            }
-        }
-        // Memories button
-        TextButton(onClick = onMemoriesClick) {
-            Text("🧠 Memories", fontSize = 11.sp, color = Color.White.copy(alpha = 0.4f))
-        }
-    }
-    // Divider
+private fun AiUsageBar(chat: AiChat, onRetry: () -> Unit) {
+    val colors = currentProfilePalette
+    val usage = chat.usage
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(0.5.dp)
-            .background(Color.White.copy(alpha = 0.07f))
-    )
-}
-
-@Composable
-private fun WelcomeBubble(friend: AiFriend) {
-    Column(
-        modifier            = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
+        contentAlignment = Alignment.Center
     ) {
-        Text(friend.emoji, fontSize = 40.sp)
-        Spacer(Modifier.height(12.dp))
-        Text(
-            text      = "\"${friend.description}\"",
-            fontSize  = 15.sp,
-            color     = Color.White.copy(alpha = 0.5f),
-            textAlign = TextAlign.Center,
-            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-            modifier  = Modifier.padding(horizontal = 32.dp)
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text      = "${friend.name}  •  AI Friend",
-            fontSize  = 11.sp,
-            color     = Color.White.copy(alpha = 0.25f),
-        )
-    }
-}
-
-@Composable
-private fun ChatBubble(message: AiMessage, friend: AiFriend) {
-    val isUser = message.sender == "user"
-    Row(
-        modifier              = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
-    ) {
-        if (!isUser) {
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.06f))
-                    .align(Alignment.Bottom),
-                contentAlignment = Alignment.Center
-            ) { Text(friend.emoji, fontSize = 14.sp) }
-            Spacer(Modifier.width(8.dp))
-        }
-
-        Box(
-            modifier = Modifier
-                .widthIn(max = 280.dp)
-                .clip(
-                    RoundedCornerShape(
-                        topStart    = if (isUser) 18.dp else 4.dp,
-                        topEnd      = if (isUser) 4.dp  else 18.dp,
-                        bottomStart = 18.dp,
-                        bottomEnd   = 18.dp
-                    )
-                )
-                .background(
-                    if (isUser) Color.White
-                    else        Color(0xFF1C1C1C)
-                )
-                .padding(horizontal = 14.dp, vertical = 10.dp)
-        ) {
+        val issue = chat.serviceIssue
+        if (issue != null) {
+            AiNotice(issue.message, "Retry", onRetry, enabled = !chat.statusLoading)
+        } else {
+            val text = when {
+                usage == null -> "Connecting to VEIL Friends…"
+                usage.freeRemaining > 0 -> "${usage.freeRemaining} of ${usage.freeLimit} free replies left"
+                else -> "${usage.cookieCost} cookie per reply · ${usage.cookieBalance} in your wallet"
+            }
             Text(
-                text     = message.content,
-                fontSize = 14.sp,
-                color    = if (isUser) Color.Black else Color.White.copy(alpha = 0.9f),
-                lineHeight = 20.sp
+                text, Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+                style = MaterialTheme.typography.labelMedium, color = colors.accent
             )
         }
     }
 }
 
 @Composable
-private fun TypingIndicator(friend: AiFriend) {
-    val infiniteTransition = rememberInfiniteTransition(label = "typing")
-    val alpha1 by infiniteTransition.animateFloat(0.3f, 1f, infiniteRepeatable(tween(400, 0)), label = "d1")
-    val alpha2 by infiniteTransition.animateFloat(0.3f, 1f, infiniteRepeatable(tween(400, 133)), label = "d2")
-    val alpha3 by infiniteTransition.animateFloat(0.3f, 1f, infiniteRepeatable(tween(400, 266)), label = "d3")
-
-    Row(verticalAlignment = Alignment.Bottom) {
-        Box(
-            modifier = Modifier
-                .size(28.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.06f)),
-            contentAlignment = Alignment.Center
-        ) { Text(friend.emoji, fontSize = 14.sp) }
-        Spacer(Modifier.width(8.dp))
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 18.dp))
-                .background(Color(0xFF1C1C1C))
-                .padding(horizontal = 18.dp, vertical = 14.dp)
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
-                listOf(alpha1, alpha2, alpha3).forEach { a ->
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .alpha(a)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun InputBar(
-    text      : String,
-    onChange  : (String) -> Unit,
-    onSend    : () -> Unit,
-    isSending : Boolean,
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color.Black)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+private fun AiStarters(friend: AiFriend, onSelect: (String) -> Unit) {
+    val colors = currentProfilePalette
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            // Text input
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color(0xFF1C1C1C))
-                    .border(0.5.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
-                    .padding(horizontal = 16.dp, vertical = 12.dp)
+        AiPortrait(friend, 80.dp)
+        Text("Talk with ${friend.name}", style = MaterialTheme.typography.headlineSmall, color = colors.text)
+        Text(friend.description, style = MaterialTheme.typography.bodyMedium, color = colors.secondaryText)
+        Text(
+            "Start with a prompt or write your own message.",
+            style = MaterialTheme.typography.bodySmall,
+            color = colors.secondaryText,
+            modifier = Modifier.padding(top = 6.dp)
+        )
+        friend.starters.forEach { starter ->
+            Surface(
+                onClick = { onSelect(starter) },
+                modifier = Modifier.fillMaxWidth().widthIn(max = 420.dp),
+                color = colors.card,
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, colors.border)
             ) {
-                if (text.isEmpty()) {
-                    Text("Type something…", fontSize = 14.sp, color = Color.White.copy(alpha = 0.25f))
-                }
-                BasicTextField(
-                    value         = text,
-                    onValueChange = onChange,
-                    cursorBrush   = SolidColor(Color.White),
-                    textStyle     = TextStyle(fontSize = 14.sp, color = Color.White, lineHeight = 20.sp),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { onSend() }),
-                    modifier      = Modifier.fillMaxWidth(),
-                    maxLines      = 5,
-                )
+                Text(starter, Modifier.padding(horizontal = 16.dp, vertical = 13.dp), color = colors.text)
             }
+        }
+    }
+}
 
-            // Send button
-            val canSend = text.isNotBlank() && !isSending
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(if (canSend) Color.White else Color(0xFF1C1C1C))
-                    .clickable(enabled = canSend) { onSend() },
-                contentAlignment = Alignment.Center
-            ) {
-                if (isSending) {
-                    CircularProgressIndicator(
-                        modifier     = Modifier.size(18.dp),
-                        color        = Color.White.copy(alpha = 0.5f),
-                        strokeWidth  = 2.dp
-                    )
+@Composable
+private fun AiBubble(message: AiMessage, isPending: Boolean, onReport: () -> Unit) {
+    val colors = currentProfilePalette
+    val sent = message.sender == "user"
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val bubbleWidth = minOf(maxWidth * 0.86f, 520.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = if (sent) Arrangement.End else Arrangement.Start,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            Surface(
+                modifier = Modifier.widthIn(max = bubbleWidth),
+                color = if (sent) colors.tintedSurface else colors.card,
+                border = BorderStroke(1.dp, colors.border),
+                shape = if (sent) {
+                    RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 6.dp)
                 } else {
+                    RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 6.dp, bottomEnd = 20.dp)
+                }
+            ) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Text(message.content, color = colors.text, style = MaterialTheme.typography.bodyMedium)
+                    if (isPending) {
+                        Text("Sending…", Modifier.padding(top = 4.dp), color = colors.secondaryText, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            }
+            if (message.sender == "assistant") {
+                IconButton(onClick = onReport) {
                     Icon(
-                        Icons.Rounded.Send,
-                        contentDescription = "Send",
-                        tint               = if (canSend) Color.Black else Color.White.copy(alpha = 0.2f),
-                        modifier           = Modifier.size(18.dp)
+                        Icons.Default.Flag, contentDescription = "Report AI reply", tint = colors.secondaryText,
+                        modifier = Modifier.size(17.dp)
                     )
                 }
             }
@@ -427,105 +382,215 @@ private fun InputBar(
 }
 
 @Composable
-private fun MemorySheet(
-    friend    : AiFriend,
-    memories  : List<AiMemory>,
-    onDelete  : (String) -> Unit,
-    onForget  : () -> Unit,
-    onDismiss : () -> Unit,
-) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(20.dp))
-                .background(Color(0xFF111111))
-                .padding(24.dp)
-        ) {
-            Column {
+private fun AiComposer(draft: String, canSend: Boolean, error: String?, onEdit: (String) -> Unit, onSend: () -> Unit) {
+    val colors = currentProfilePalette
+    val enabled = canSend && draft.isNotBlank()
+    Surface(color = colors.card) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+            error?.let {
                 Text(
-                    "What ${friend.name} Remembers",
-                    fontSize   = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color      = Color.White
+                    it,
+                    Modifier.padding(start = 4.dp, bottom = 6.dp).semantics { liveRegion = LiveRegionMode.Polite },
+                    color = colors.accent,
+                    style = MaterialTheme.typography.bodySmall
                 )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Your AI Friend  •  ${memories.size} memories",
-                    fontSize = 11.sp,
-                    color    = Color.White.copy(alpha = 0.35f)
-                )
-                Spacer(Modifier.height(16.dp))
-
-                if (memories.isEmpty()) {
-                    Text(
-                        "Nothing remembered yet.\n${friend.name} will remember important things you share.",
-                        fontSize = 13.sp,
-                        color    = Color.White.copy(alpha = 0.4f),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp)
+            }
+            Row(
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = onEdit,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Message…", color = colors.secondaryText) },
+                    minLines = 1,
+                    maxLines = 4,
+                    shape = RoundedCornerShape(20.dp),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { if (enabled) onSend() }),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = colors.text,
+                        unfocusedTextColor = colors.text,
+                        focusedContainerColor = colors.background,
+                        unfocusedContainerColor = colors.background,
+                        focusedBorderColor = colors.accent,
+                        unfocusedBorderColor = colors.border,
+                        cursorColor = colors.accent
                     )
-                } else {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())
-                    ) {
-                        memories.forEach { memory ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color.White.copy(alpha = 0.05f))
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    "✓  ${memory.memoryText}",
-                                    fontSize = 13.sp,
-                                    color    = Color.White.copy(alpha = 0.75f),
-                                    modifier = Modifier.weight(1f)
-                                )
-                                TextButton(onClick = { onDelete(memory.id) }, contentPadding = PaddingValues(0.dp)) {
-                                    Text("✕", fontSize = 12.sp, color = Color.White.copy(alpha = 0.25f))
+                )
+                Surface(
+                    onClick = onSend,
+                    enabled = enabled,
+                    shape = CircleShape,
+                    color = if (enabled) colors.accent else colors.tintedSurface,
+                    modifier = Modifier.padding(bottom = 4.dp).size(48.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send message",
+                            tint = if (enabled) colors.onAccent else colors.secondaryText,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+            if (draft.length >= AI_MESSAGE_LIMIT - 50) {
+                Text(
+                    "${draft.length}/$AI_MESSAGE_LIMIT",
+                    Modifier.align(Alignment.End).padding(top = 4.dp, end = 55.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.secondaryText
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AiNotice(message: String, action: String, onClick: () -> Unit, enabled: Boolean = true) {
+    val colors = currentProfilePalette
+    Row(
+        modifier = Modifier.padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Text(message, color = colors.secondaryText, style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.weight(1f, fill = false))
+        TextButton(onClick = onClick, enabled = enabled) {
+            Text(if (enabled) action else "Checking…", color = colors.accent)
+        }
+    }
+}
+
+@Composable
+private fun AiMemoriesDialog(
+    memories: AiMemoryState,
+    onDismiss: () -> Unit,
+    onRetry: () -> Unit,
+    onForget: (List<String>) -> Unit
+) {
+    val colors = currentProfilePalette
+    var confirmAll by rememberSaveable { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = { if (confirmAll) confirmAll = false else onDismiss() },
+        containerColor = colors.card,
+        title = { Text(if (confirmAll) "Forget all saved memories?" else "Saved memories", color = colors.text) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                when {
+                    confirmAll -> Text("This removes the saved memories for this friend.", color = colors.secondaryText)
+                    memories.loading -> CircularProgressIndicator(Modifier.size(22.dp), color = colors.accent, strokeWidth = 2.dp)
+                    memories.error != null -> AiNotice(memories.error, "Retry", onRetry)
+                    memories.memories.isEmpty() -> Text("You don't have any saved memories for this friend.", color = colors.secondaryText)
+                    else -> LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                        items(memories.memories, key = { it.id }) { memory ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(memory.text, Modifier.weight(1f), color = colors.text)
+                                IconButton(onClick = { onForget(listOf(memory.id)) }) {
+                                    Icon(Icons.Default.DeleteOutline, contentDescription = "Forget memory", tint = colors.accent)
                                 }
                             }
                         }
                     }
                 }
-
-                Spacer(Modifier.height(16.dp))
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(
-                        onClick = { onForget(); onDismiss() },
-                        modifier = Modifier.weight(1f),
-                        border   = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.15f)),
-                        shape    = RoundedCornerShape(12.dp),
-                    ) {
-                        Text("Forget Everything", fontSize = 12.sp, color = Color.White.copy(alpha = 0.5f))
-                    }
-                    Button(
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f),
-                        shape  = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                    ) {
-                        Text("Done", fontSize = 13.sp, color = Color.Black, fontWeight = FontWeight.Medium)
-                    }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (confirmAll) {
+                    onForget(memories.memories.map { it.id })
+                    confirmAll = false
+                } else {
+                    onDismiss()
+                }
+            }) { Text(if (confirmAll) "Forget all" else "Done", color = colors.accent) }
+        },
+        dismissButton = {
+            if (confirmAll || (memories.memories.isNotEmpty() && !memories.loading && memories.error == null)) {
+                TextButton(onClick = { confirmAll = !confirmAll }) {
+                    Text(if (confirmAll) "Cancel" else "Forget all", color = colors.accent)
                 }
             }
         }
-    }
+    )
 }
 
-// ── Each friend gets a subtle accent color for the radial background glow ──
-private fun friendAccentColor(friendId: String): Color = when (friendId) {
-    "luna"  -> Color(0xFF3D5AFE)   // deep blue
-    "blaze" -> Color(0xFFFF6D00)   // warm orange
-    "rose"  -> Color(0xFFE91E63)   // soft pink
-    "sage"  -> Color(0xFF00BCD4)   // cyan
-    "ego"   -> Color(0xFFFFD600)   // gold
-    "kira"  -> Color(0xFF9C27B0)   // purple
-    "nox"   -> Color(0xFF00E5FF)   // electric teal
-    "rex"   -> Color(0xFFFF1744)   // sharp red
-    else    -> Color(0xFF424242)
+private val aiReportReasons = listOf(
+    "inappropriate" to "Inappropriate content",
+    "child_safety" to "Child safety concern",
+    "threats" to "Threats or violence",
+    "harassment" to "Harassment or bullying",
+    "other" to "Something else"
+)
+
+@Composable
+private fun AiReportDialog(onDismiss: () -> Unit, onSubmit: suspend (String) -> String?) {
+    val colors = currentProfilePalette
+    val scope = rememberCoroutineScope()
+    var reason by rememberSaveable { mutableStateOf("") }
+    var submitting by remember { mutableStateOf(false) }
+    var reported by rememberSaveable { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = { if (!submitting) onDismiss() },
+        containerColor = colors.card,
+        title = { Text(if (reported) "Report received" else "Report AI reply", color = colors.text) },
+        text = {
+            if (reported) {
+                Text("The VEIL team will review this reply.", color = colors.secondaryText)
+            } else {
+                LazyColumn(Modifier.heightIn(max = 330.dp).selectableGroup()) {
+                    item { Text("Only this AI reply will be shared with the moderation team.", color = colors.secondaryText) }
+                    items(aiReportReasons, key = { it.first }) { (id, label) ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
+                                .selectable(reason == id, !submitting, Role.RadioButton, onClick = { reason = id }),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            RadioButton(
+                                selected = reason == id,
+                                onClick = null,
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = colors.accent, unselectedColor = colors.secondaryText
+                                )
+                            )
+                            Text(label, color = colors.text)
+                        }
+                    }
+                    error?.let { message -> item { Text(message, color = colors.accent) } }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = reported || (!submitting && reason.isNotBlank()),
+                onClick = {
+                    if (reported) onDismiss()
+                    else {
+                        submitting = true
+                        scope.launch {
+                            try {
+                                error = onSubmit(reason)
+                                reported = error == null
+                            } finally {
+                                submitting = false
+                            }
+                        }
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = colors.accent, contentColor = colors.onAccent)
+            ) {
+                Text(if (reported) "Done" else if (submitting) "Sending…" else "Send report")
+            }
+        },
+        dismissButton = {
+            if (!reported) {
+                TextButton(onClick = onDismiss, enabled = !submitting) { Text("Cancel", color = colors.accent) }
+            }
+        }
+    )
 }

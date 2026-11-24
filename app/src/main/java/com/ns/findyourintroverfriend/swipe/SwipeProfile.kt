@@ -123,7 +123,8 @@ data class SwipeMessage(
     val imageUrl    : String  = "",      // non-empty for image messages
     val replyToMsgId: String  = "",      // id of quoted message
     val replyToText : String  = "",      // snippet of quoted text (or "[Image]")
-    val replyToAlias: String  = ""       // alias of quoted sender
+    val replyToAlias: String  = "",      // alias of quoted sender
+    @get:com.google.firebase.firestore.Exclude val firestoreId: String = ""
 )
 
 // ── Compliment received ───────────────────────────────────────────────────────
